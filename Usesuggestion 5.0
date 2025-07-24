@@ -1,0 +1,196 @@
+import { renderHook, act } from '@testing-library/react';
+import useSuggestionApi from '../useSuggestionApi'; // update path as needed
+
+// Mocking global fetch
+global.fetch = jest.fn();
+
+const mockFeaturePayload = [
+  {
+    feature_id: 'F708672',
+    feature_name: 'RSS: Migrate UK Processing Bank from Barclays to Citi',
+    feature_description: 'As a product owner, I need RSS to m GMPD',
+    feature_acceptance_criteria: 'In order for Complete integrating.',
+    user_stories: [],
+    feature_objectId: '812879424619',
+    feature_reference: 'https://rally1.rallydev.com/',
+  },
+];
+
+const mockFeatureResponse = {
+  message: 'Suggested Feature Generated successfully',
+  data: {
+    feature_id: 'F708672',
+    Suggested_Feature: 'Fion.',
+    Business_Objective: '- Summary: Facilitate the migration',
+    User_Roles: '-some role',
+    Description: 'The feature involves migrating ',
+    Dependencies: '- Internal Dependencies: Ration.',
+    Risks: '1. Banking Security: Risk of data ',
+    Out_of_scope: '- Migration of non–UK payment and collection processing.',
+    feature_name: 'RSS: Migrate UK Processing Bank from Barclays to Citi',
+  },
+};
+
+const mockStoryPayload = [
+  {
+    feature_id: 'F708672',
+    feature_name: 'RSS: Migrate UK Processing Bank from Barclays to Citi',
+    feature_description: 'As a product owner, I need RSS to m GMPD',
+    feature_acceptance_criteria: 'In order for Complete integrating.',
+    user_stories: [],
+    feature_objectId: '812879424619',
+    feature_reference: 'https://rally1.rallydev.com/',
+  },
+];
+
+const mockStoryResponse = {
+  message: 'Suggested User Stories Generated successfully',
+  data: [
+    {
+      user_story_id: 'US5348674',
+      Suggested_User_story: 'Refined User S',
+      User_Story_Name: 'RSS: Migrate UK Processing Bank',
+      Business_Objective: 'Migrate UK paym—',
+      User_Roles: 'Product Owner (PO): Ove',
+      Description: 'As a Product Owner...',
+      Acceptance_Criteria: '1. File Process',
+      Dependencies: '- Internal Dependencies',
+      Risks: 'Operational Risks:',
+      Out_of_scope: 'Development of new file t',
+    },
+    {
+      user_story_id: 'US5348686',
+      Suggested_User_story: 'Refined User U',
+      User_Story_Name: 'RSS: Migrate UK mex)',
+      Business_Objective: 'Enabl',
+      User_Roles: 'Product Owner',
+      Description: 'As a Product...',
+      Acceptance_Criteria: '1. Payment Proce',
+      Dependencies: '- Internal Depende',
+      Risks: 'Operational Disrup',
+      Out_of_scope: 'Migration of',
+    },
+  ],
+};
+
+describe('useSuggestionApi hook', () => {
+  beforeEach(() => {
+    fetch.mockClear();
+  });
+
+  it('should initialize with default values', () => {
+    const { result } = renderHook(() => useSuggestionApi('feature'));
+    expect(result.current.suggestionResponse).toEqual([]);
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.error).toBe(false);
+  });
+
+  it('should handle feature suggestion API success', async () => {
+    fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockFeatureResponse,
+    });
+
+    const { result } = renderHook(() => useSuggestionApi('feature'));
+
+    await act(async () => {
+      await result.current.getSuggestions(mockFeaturePayload);
+    });
+
+    expect(fetch).toHaveBeenCalledWith('/api/suggest/feature', expect.anything());
+    expect(result.current.suggestionResponse).toEqual([
+      {
+        feature_id: 'F708672',
+        suggestions: mockFeatureResponse.data,
+      },
+    ]);
+    expect(result.current.error).toBe(false);
+    expect(result.current.isLoading).toBe(false);
+  });
+
+  it('should handle story suggestion API success', async () => {
+    fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockStoryResponse,
+    });
+
+    const { result } = renderHook(() => useSuggestionApi('story'));
+
+    await act(async () => {
+      await result.current.getSuggestions(mockStoryPayload);
+    });
+
+    expect(fetch).toHaveBeenCalledWith('/api/suggest/story', expect.anything());
+    expect(result.current.suggestionResponse).toEqual(
+      mockStoryResponse.data.map((d) => ({
+        user_story_id: d.user_story_id,
+        suggestions: d,
+      }))
+    );
+    expect(result.current.error).toBe(false);
+    expect(result.current.isLoading).toBe(false);
+  });
+
+  it('should show loading placeholders before API returns', async () => {
+    let resolveFetch;
+    fetch.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveFetch = resolve;
+      })
+    );
+
+    const { result } = renderHook(() => useSuggestionApi('feature'));
+
+    act(() => {
+      result.current.getSuggestions(mockFeaturePayload);
+    });
+
+    expect(result.current.suggestionResponse).toEqual([
+      { ...mockFeaturePayload[0], suggestions: 'loading' },
+    ]);
+    expect(result.current.isLoading).toBe(true);
+
+    // Complete the fetch
+    await act(async () => {
+      resolveFetch({
+        ok: true,
+        json: async () => mockFeatureResponse,
+      });
+    });
+  });
+
+  it('should handle API error and fallback to error suggestion', async () => {
+    fetch.mockRejectedValueOnce(new Error('500 error'));
+
+    const { result } = renderHook(() => useSuggestionApi('feature'));
+
+    await act(async () => {
+      await result.current.getSuggestions(mockFeaturePayload);
+    });
+
+    expect(result.current.suggestionResponse).toEqual([
+      { ...mockFeaturePayload[0], suggestions: 'error' },
+    ]);
+    expect(result.current.error).toBe(true);
+    expect(result.current.isLoading).toBe(false);
+  });
+
+  it('should handle invalid response shape (no data)', async () => {
+    fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({}), // no data key
+    });
+
+    const { result } = renderHook(() => useSuggestionApi('story'));
+
+    await act(async () => {
+      await result.current.getSuggestions(mockStoryPayload);
+    });
+
+    expect(result.current.suggestionResponse).toEqual([
+      { ...mockStoryPayload[0], suggestions: 'error' },
+    ]);
+    expect(result.current.error).toBe(true);
+    expect(result.current.isLoading).toBe(false);
+  });
+});
