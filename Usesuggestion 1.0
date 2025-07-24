@@ -1,0 +1,176 @@
+import { renderHook, act } from '@testing-library/react-hooks';
+import { useSelector } from 'react-redux';
+import useSuggestionHelper from '../hooks/qeassist/useSuggestionApi';
+import * as uuid from 'uuid';
+
+jest.mock('react-redux', () => ({
+  useSelector: jest.fn(),
+}));
+
+jest.mock('uuid', () => ({
+  v4: jest.fn(() => 'mock-uuid'),
+}));
+
+global.fetch = jest.fn();
+
+const mockSetLlmResponse = jest.fn();
+
+const mockPayload = [
+  { feature_id: 101, user_story_id: 201 },
+  { feature_id: 102, user_story_id: 202 },
+];
+
+describe('useSuggestionHelper hook', () => {
+  beforeEach(() => {
+    useSelector.mockImplementation((fn) =>
+      fn({
+        getIn: () => 'https://mock-api.com',
+        config: { qeAssistUrl: 'https://mock-api.com' },
+      })
+    );
+    jest.clearAllMocks();
+  });
+
+  it('should initialize with correct default values', () => {
+    const { result } = renderHook(() =>
+      useSuggestionHelper({
+        artifactType: 'story',
+        llmPayload: mockPayload,
+        setLlmResponse: mockSetLlmResponse,
+      })
+    );
+
+    expect(result.current.isSuggestionLoading).toBe(false);
+    expect(typeof result.current.getSuggestion).toBe('function');
+    expect(result.current.suggestionData).toBe(null);
+  });
+
+  it('should handle successful response for story type', async () => {
+    const mockResponse = {
+      status: 200,
+      json: jest.fn().mockResolvedValue({
+        data: {
+          data: [{ feature_id: 101, suggestions: ['Story Suggestion'] }],
+        },
+      }),
+    };
+    fetch.mockResolvedValue(mockResponse);
+
+    const { result, waitForNextUpdate } = renderHook(() =>
+      useSuggestionHelper({
+        artifactType: 'story',
+        llmPayload: mockPayload,
+        setLlmResponse: mockSetLlmResponse,
+      })
+    );
+
+    await act(async () => {
+      await result.current.getSuggestion();
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      'https://mock-api.com/api/suggest/story',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.any(Object),
+        body: JSON.stringify({
+          artifactType: 'story',
+          user_stories: mockPayload,
+        }),
+      })
+    );
+
+    expect(mockSetLlmResponse).toHaveBeenCalled();
+    expect(result.current.suggestionData.status).toBe(200);
+    expect(result.current.isSuggestionLoading).toBe(false);
+  });
+
+  it('should handle successful response for feature type', async () => {
+    const mockResponse = {
+      status: 200,
+      json: jest.fn().mockResolvedValue({
+        data: {
+          body: [{ data: ['Feature Suggestion'] }],
+        },
+      }),
+    };
+    fetch.mockResolvedValue(mockResponse);
+
+    const { result } = renderHook(() =>
+      useSuggestionHelper({
+        artifactType: 'feature',
+        llmPayload: mockPayload,
+        setLlmResponse: mockSetLlmResponse,
+      })
+    );
+
+    await act(async () => {
+      await result.current.getSuggestion();
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      'https://mock-api.com/api/suggest/features',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.any(Object),
+        body: JSON.stringify({
+          artifactType: 'feature',
+          featurePayload: mockPayload,
+        }),
+      })
+    );
+
+    expect(mockSetLlmResponse).toHaveBeenCalled();
+    expect(result.current.suggestionData.status).toBe(200);
+    expect(result.current.isSuggestionLoading).toBe(false);
+  });
+
+  it('should handle API failure gracefully', async () => {
+    fetch.mockRejectedValueOnce(new Error('API Error'));
+
+    const { result } = renderHook(() =>
+      useSuggestionHelper({
+        artifactType: 'story',
+        llmPayload: mockPayload,
+        setLlmResponse: mockSetLlmResponse,
+      })
+    );
+
+    await act(async () => {
+      await result.current.getSuggestion();
+    });
+
+    expect(result.current.suggestionData.status).toBe(500);
+    expect(result.current.suggestionData.body).toBe(null);
+    expect(mockSetLlmResponse).not.toHaveBeenCalled();
+    expect(result.current.isSuggestionLoading).toBe(false);
+  });
+
+  it('should handle HTTP error responses (4xx, 5xx)', async () => {
+    const mockResponse = {
+      status: 404,
+      json: jest.fn().mockResolvedValue({}),
+    };
+    fetch.mockResolvedValue(mockResponse);
+
+    const { result } = renderHook(() =>
+      useSuggestionHelper({
+        artifactType: 'feature',
+        llmPayload: mockPayload,
+        setLlmResponse: mockSetLlmResponse,
+      })
+    );
+
+    await act(async () => {
+      await result.current.getSuggestion();
+    });
+
+    expect(mockSetLlmResponse).toHaveBeenCalledWith(expect.any(Function));
+    // call the callback passed to setLlmResponse to check behavior
+    const resultItem = { feature_id: 101, user_story_id: 201 };
+    const mapper = mockSetLlmResponse.mock.calls[0][0];
+    const response = mapper([resultItem]);
+
+    expect(response).toEqual([{ ...resultItem, suggestions: 'error' }]);
+  });
+});
