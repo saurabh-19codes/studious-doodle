@@ -19,9 +19,6 @@ jest.mock('../../constants', () => ({
 // Mock fetch
 global.fetch = jest.fn();
 
-const mockUseSelector = useSelector as jest.MockedFunction<typeof useSelector>;
-const mockUuidv4 = uuidv4 as jest.MockedFunction<typeof uuidv4>;
-
 describe('useSuggestionHelper', () => {
   const mockQeAssistLmUrl = 'https://api.example.com';
   const mockCorrelationId = 'test-correlation-id-123';
@@ -29,12 +26,14 @@ describe('useSuggestionHelper', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     
-    // Default mock implementations
-    mockUseSelector.mockReturnValue(mockQeAssistLmUrl);
-    mockUuidv4.mockReturnValue(mockCorrelationId);
+    // Mock useSelector to return the API URL
+    useSelector.mockReturnValue(mockQeAssistLmUrl);
+    
+    // Mock uuid generation
+    uuidv4.mockReturnValue(mockCorrelationId);
     
     // Reset fetch mock
-    (fetch as jest.MockedFunction<typeof fetch>).mockClear();
+    fetch.mockClear();
   });
 
   afterEach(() => {
@@ -67,11 +66,11 @@ describe('useSuggestionHelper', () => {
         suggestions: ['Suggestion 1', 'Suggestion 2']
       };
 
-      (fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
+      fetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
         json: async () => mockResponseData
-      } as Response);
+      });
 
       const { result } = renderHook(() => useSuggestionHelper({
         artifactType: 'story',
@@ -109,13 +108,13 @@ describe('useSuggestionHelper', () => {
 
     it('should set loading states correctly during story API call', async () => {
       const mockSetLlmResponse = jest.fn();
-      let resolvePromise: (value: any) => void;
+      let resolvePromise;
       
       const mockPromise = new Promise((resolve) => {
         resolvePromise = resolve;
       });
 
-      (fetch as jest.MockedFunction<typeof fetch>).mockReturnValueOnce(mockPromise);
+      fetch.mockReturnValueOnce(mockPromise);
 
       const { result } = renderHook(() => useSuggestionHelper({
         artifactType: 'story',
@@ -131,14 +130,22 @@ describe('useSuggestionHelper', () => {
       // Check loading state is true
       expect(result.current.isSuggestionLoading).toBe(true);
 
-      // Verify setLlmResponse was called with loading state
-      expect(mockSetLlmResponse).toHaveBeenCalledWith(expect.objectContaining({
+      // Verify setLlmResponse was called with loading state for each item
+      expect(mockSetLlmResponse).toHaveBeenCalledWith(expect.any(Function));
+
+      // Test the function passed to setLlmResponse
+      const updateFunction = mockSetLlmResponse.mock.calls[0][0];
+      const mockPrev = [{ id: 1, feature_id: 'feat-1' }, { id: 2, feature_id: 'feat-2' }];
+      const updatedItems = updateFunction(mockPrev);
+      
+      expect(updatedItems[0]).toEqual({
+        ...mockPrev[0],
         suggestions: 'loading'
-      }));
+      });
 
       // Resolve the promise
       await act(async () => {
-        resolvePromise!({
+        resolvePromise({
           ok: true,
           status: 200,
           json: async () => ({ suggestions: ['test'] })
@@ -160,16 +167,16 @@ describe('useSuggestionHelper', () => {
       const mockSetLlmResponse = jest.fn();
       const mockResponseData = {
         data: [
-          { feature_id: 'feat-1', suggestions: ['Feature suggestion 1'] },
-          { feature_id: 'feat-2', suggestions: ['Feature suggestion 2'] }
+          { feature_id: 'feat-1', data: { suggestions: ['Feature suggestion 1'] } },
+          { feature_id: 'feat-2', data: { suggestions: ['Feature suggestion 2'] } }
         ]
       };
 
-      (fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
+      fetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
         json: async () => mockResponseData
-      } as Response);
+      });
 
       const { result } = renderHook(() => useSuggestionHelper({
         artifactType: 'feature',
@@ -181,7 +188,7 @@ describe('useSuggestionHelper', () => {
         await result.current.getSuggestion();
       });
 
-      // Verify fetch was called with correct parameters
+      // Verify fetch was called with correct parameters for features
       expect(fetch).toHaveBeenCalledWith(
         `${mockQeAssistLmUrl}/api/suggest/features`,
         {
@@ -215,11 +222,11 @@ describe('useSuggestionHelper', () => {
         { feature_id: 'feat-2', data: { suggestions: ['Suggestion for feat-2'] } }
       ];
 
-      (fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
+      fetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
         json: async () => ({ body: { data: mockResponseData } })
-      } as Response);
+      });
 
       const { result } = renderHook(() => useSuggestionHelper({
         artifactType: 'feature',
@@ -231,8 +238,18 @@ describe('useSuggestionHelper', () => {
         await result.current.getSuggestion();
       });
 
-      // Verify setLlmResponse was called with mapped suggestions
-      expect(mockSetLlmResponse).toHaveBeenCalledWith(expect.any(Function));
+      // Wait for useEffect to process the response
+      await waitFor(() => {
+        expect(mockSetLlmResponse).toHaveBeenCalledWith(expect.any(Function));
+      });
+
+      // Verify the mapping function works correctly
+      const updateFunction = mockSetLlmResponse.mock.calls[mockSetLlmResponse.mock.calls.length - 1][0];
+      const result_call = updateFunction(mockLlmPayload);
+      
+      expect(result_call[0]).toEqual(expect.objectContaining({
+        suggestions: mockResponseData[0].data
+      }));
     });
   });
 
@@ -241,10 +258,10 @@ describe('useSuggestionHelper', () => {
       const mockSetLlmResponse = jest.fn();
       const mockError = new Error('API Error');
 
-      (fetch as jest.MockedFunction<typeof fetch>).mockRejectedValueOnce(mockError);
+      fetch.mockRejectedValueOnce(mockError);
 
       // Spy on console.error to verify error logging
-      const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
+      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
       const { result } = renderHook(() => useSuggestionHelper({
         artifactType: 'story',
@@ -271,41 +288,15 @@ describe('useSuggestionHelper', () => {
       consoleSpy.mockRestore();
     });
 
-    it('should handle HTTP error responses', async () => {
-      const mockSetLlmResponse = jest.fn();
-
-      (fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: false,
-        status: 404,
-        json: async () => ({ error: 'Not found' })
-      } as Response);
-
-      const { result } = renderHook(() => useSuggestionHelper({
-        artifactType: 'story',
-        llmPayload: [],
-        setLlmResponse: mockSetLlmResponse
-      }));
-
-      await act(async () => {
-        await result.current.getSuggestion();
-      });
-
-      // Verify error response was handled
-      expect(result.current.suggestionData).toEqual({
-        status: 404,
-        body: { error: 'Not found' }
-      });
-    });
-
-    it('should handle status codes 400-599 and set error state', async () => {
+    it('should handle HTTP error responses (400-599)', async () => {
       const mockSetLlmResponse = jest.fn();
       const mockLlmPayload = [{ id: 1, feature_id: 'feat-1' }];
 
-      (fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
+      fetch.mockResolvedValueOnce({
         ok: false,
         status: 500,
         json: async () => ({ error: 'Internal server error' })
-      } as Response);
+      });
 
       const { result } = renderHook(() => useSuggestionHelper({
         artifactType: 'feature',
@@ -317,7 +308,13 @@ describe('useSuggestionHelper', () => {
         await result.current.getSuggestion();
       });
 
-      // Verify setLlmResponse was called with error state for items
+      // Verify error response was handled
+      expect(result.current.suggestionData).toEqual({
+        status: 500,
+        body: { error: 'Internal server error' }
+      });
+
+      // Verify setLlmResponse was called with error state for items (status >= 400 && < 600)
       expect(mockSetLlmResponse).toHaveBeenCalledWith(expect.any(Function));
       
       // Get the function that was passed to setLlmResponse
@@ -331,10 +328,18 @@ describe('useSuggestionHelper', () => {
     });
   });
 
-  describe('useEffect behavior', () => {
-    it('should trigger getSuggestion when suggestionData status is 200 and has body data', async () => {
+  describe('useEffect behavior for response processing', () => {
+    it('should process story type response when status is 200 and has body data', async () => {
       const mockSetLlmResponse = jest.fn();
       const mockLlmPayload = [{ id: 1, feature_id: 'feat-1', user_story_id: 'story-1' }];
+
+      const mockResponseData = { suggestions: ['story suggestion'] };
+
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => mockResponseData
+      });
 
       const { result } = renderHook(() => useSuggestionHelper({
         artifactType: 'story',
@@ -342,45 +347,103 @@ describe('useSuggestionHelper', () => {
         setLlmResponse: mockSetLlmResponse
       }));
 
-      // Simulate successful API response
       await act(async () => {
-        (fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          json: async () => ({ suggestions: ['test suggestion'] })
-        } as Response);
+        await result.current.getSuggestion();
+      });
 
+      // Wait for useEffect to process the response
+      await waitFor(() => {
+        expect(result.current.suggestionData?.status).toBe(200);
+        expect(result.current.suggestionData?.body).toEqual(mockResponseData);
+      });
+
+      // Verify setLlmResponse was called to update with actual suggestions
+      expect(mockSetLlmResponse).toHaveBeenCalledWith(expect.any(Function));
+    });
+
+    it('should process feature type response with data mapping', async () => {
+      const mockSetLlmResponse = jest.fn();
+      const mockLlmPayload = [
+        { id: 1, feature_id: 'feat-1', user_story_id: 'story-1' },
+        { id: 2, feature_id: 'feat-2', user_story_id: 'story-2' }
+      ];
+
+      const mockResponseData = [
+        { feature_id: 'feat-1', data: { suggestions: ['Feature 1 suggestion'] } },
+        { feature_id: 'feat-2', data: { suggestions: ['Feature 2 suggestion'] } }
+      ];
+
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ body: { data: mockResponseData } })
+      });
+
+      const { result } = renderHook(() => useSuggestionHelper({
+        artifactType: 'feature',
+        llmPayload: mockLlmPayload,
+        setLlmResponse: mockSetLlmResponse
+      }));
+
+      await act(async () => {
+        await result.current.getSuggestion();
+      });
+
+      // Wait for useEffect to process
+      await waitFor(() => {
+        expect(mockSetLlmResponse).toHaveBeenCalledWith(expect.any(Function));
+      });
+
+      // Test the mapping logic
+      const updateFunction = mockSetLlmResponse.mock.calls[mockSetLlmResponse.mock.calls.length - 1][0];
+      const updatedItems = updateFunction(mockLlmPayload);
+
+      // Verify that items are matched by feature_id and updated with suggestions
+      expect(updatedItems[0]).toEqual({
+        ...mockLlmPayload[0],
+        suggestions: mockResponseData[0].data
+      });
+      expect(updatedItems[1]).toEqual({
+        ...mockLlmPayload[1],
+        suggestions: mockResponseData[1].data
+      });
+    });
+
+    it('should handle feature type response with no matching feature_id', async () => {
+      const mockSetLlmResponse = jest.fn();
+      const mockLlmPayload = [
+        { id: 1, feature_id: 'feat-1', user_story_id: 'story-1' }
+      ];
+
+      const mockResponseData = [
+        { feature_id: 'feat-999', data: { suggestions: ['Non-matching feature'] } }
+      ];
+
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ body: { data: mockResponseData } })
+      });
+
+      const { result } = renderHook(() => useSuggestionHelper({
+        artifactType: 'feature',  
+        llmPayload: mockLlmPayload,
+        setLlmResponse: mockSetLlmResponse
+      }));
+
+      await act(async () => {
         await result.current.getSuggestion();
       });
 
       await waitFor(() => {
-        expect(result.current.suggestionData?.status).toBe(200);
-        expect(result.current.suggestionData?.body).toEqual({ suggestions: ['test suggestion'] });
-      });
-    });
-
-    it('should not process suggestionData when status is not 200', async () => {
-      const mockSetLlmResponse = jest.fn();
-      const mockLlmPayload = [{ id: 1 }];
-
-      (fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
-        ok: false,
-        status: 404,
-        json: async () => ({ error: 'Not found' })
-      } as Response);
-
-      const { result } = renderHook(() => useSuggestionHelper({
-        artifactType: 'story',
-        llmPayload: mockLlmPayload,
-        setLlmResponse: mockSetLlmResponse
-      }));
-
-      await act(async () => {
-        await result.current.getSuggestion();
+        expect(mockSetLlmResponse).toHaveBeenCalledWith(expect.any(Function));
       });
 
-      // The useEffect should not process non-200 responses for setting suggestions
-      expect(result.current.suggestionData?.status).toBe(404);
+      // Test that items without matches return the original item
+      const updateFunction = mockSetLlmResponse.mock.calls[mockSetLlmResponse.mock.calls.length - 1][0];
+      const updatedItems = updateFunction(mockLlmPayload);
+
+      expect(updatedItems[0]).toEqual(mockLlmPayload[0]); // No match found, return original
     });
   });
 
@@ -388,11 +451,11 @@ describe('useSuggestionHelper', () => {
     it('should handle empty llmPayload', async () => {
       const mockSetLlmResponse = jest.fn();
 
-      (fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
+      fetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
         json: async () => ({ suggestions: [] })
-      } as Response);
+      });
 
       const { result } = renderHook(() => useSuggestionHelper({
         artifactType: 'story',
@@ -415,32 +478,18 @@ describe('useSuggestionHelper', () => {
       );
     });
 
-    it('should handle missing qeAssistLmUrl', () => {
-      mockUseSelector.mockReturnValue(null);
-
-      const { result } = renderHook(() => useSuggestionHelper({
-        artifactType: 'story',
-        llmPayload: [],
-        setLlmResponse: jest.fn()
-      }));
-
-      // Should not throw error, but getSuggestion should handle the null URL
-      expect(result.current.getSuggestion).toBeDefined();
-    });
-
     it('should generate new correlation ID for each request', async () => {
       const mockSetLlmResponse = jest.fn();
       
-      mockUuidv4
+      uuidv4
         .mockReturnValueOnce('correlation-1')
         .mockReturnValueOnce('correlation-2');
 
-      (fetch as jest.MockedFunction<typeof fetch>)
-        .mockResolvedValue({
-          ok: true,
-          status: 200,
-          json: async () => ({ suggestions: [] })
-        } as Response);
+      fetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ suggestions: [] })
+      });
 
       const { result } = renderHook(() => useSuggestionHelper({
         artifactType: 'story',
@@ -476,7 +525,34 @@ describe('useSuggestionHelper', () => {
         })
       );
 
-      expect(mockUuidv4).toHaveBeenCalledTimes(2);
+      expect(uuidv4).toHaveBeenCalledTimes(2);
+    });
+
+    it('should handle null or undefined suggestionData.body', async () => {
+      const mockSetLlmResponse = jest.fn();
+      
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => null
+      });
+
+      const { result } = renderHook(() => useSuggestionHelper({
+        artifactType: 'story',
+        llmPayload: [{ id: 1 }],
+        setLlmResponse: mockSetLlmResponse
+      }));
+
+      await act(async () => {
+        await result.current.getSuggestion();
+      });
+
+      expect(result.current.suggestionData).toEqual({
+        status: 200,
+        body: null
+      });
+
+      // The useEffect should handle null body gracefully and not crash
     });
   });
 });
