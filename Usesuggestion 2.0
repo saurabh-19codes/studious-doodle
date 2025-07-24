@@ -1,0 +1,55 @@
+it('should return item unchanged when no matching Ids in feature', () => {
+  const hookResult = renderHook(() =>
+    useSuggestionHelper({
+      artifactType: 'feature',
+      llmPayload: [{ feature_id: 2 }],
+      setLlmResponse: jest.fn(),
+    })
+  ).result;
+
+  const responseFn = (itemList) =>
+    itemList.map((item) => {
+      const match = []; // simulate no match
+      return match ? { ...item, suggestions: match } : item;
+    });
+
+  const input = [{ feature_id: 999, user_story_id: 888 }];
+  const result = responseFn(input);
+
+  expect(result).toEqual(input); // unchanged
+});
+
+it('should handle feature response shape with .map(x => x.data)', async () => {
+  const mockResponse = {
+    status: 200,
+    json: jest.fn().mockResolvedValue({
+      body: [{ data: ['feature 1'] }, { data: ['feature 2'] }]
+    }),
+  };
+  fetch.mockResolvedValue(mockResponse);
+
+  const setLlmResponse = jest.fn();
+
+  const { result } = renderHook(() =>
+    useSuggestionHelper({
+      artifactType: 'feature',
+      llmPayload: [{ feature_id: 1 }],
+      setLlmResponse,
+    })
+  );
+
+  await act(async () => {
+    await result.current.getSuggestion();
+  });
+
+  const responseFn = setLlmResponse.mock.calls[1][0];
+  const updated = responseFn([
+    { feature_id: 1, suggestions: 'loading' },
+  ]);
+
+  expect(updated).toEqual([
+    { feature_id: 1, suggestions: ['feature 1'] }
+  ]);
+});
+
+
