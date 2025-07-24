@@ -1,12 +1,14 @@
-it('should return item with suggestions: "loading" when no match is found initially', async () => {
-  const testItem = { feature_id: 10, user_story_id: 20 };
-
+it('should return item with suggestions as loading when no match is found (line 23)', async () => {
   fetch.mockResolvedValue({
     status: 200,
     json: async () => ({
-      data: { data: [] }, // no match at all
+      data: {
+        data: [{ feature_id: 999, user_story_id: 999, suggestions: ['no match'] }],
+      },
     }),
   });
+
+  const testItem = { feature_id: 1, user_story_id: 2 };
 
   const { result } = renderHook(() =>
     useSuggestionHelper({
@@ -20,9 +22,11 @@ it('should return item with suggestions: "loading" when no match is found initia
     await result.current.getSuggestion();
   });
 
-  // Line 23 is in this mapper fallback
+  // mapper logic passed to setLlmResponse
   const mapper = mockSetLlmResponse.mock.calls[1][0];
-  const mapped = mapper([testItem]);
 
-  expect(mapped).toEqual([{ ...testItem, suggestions: 'loading' }]);
+  const response = mapper([testItem]);
+
+  // ✅ Covers line 23: suggestions: 'loading'
+  expect(response).toEqual([{ ...testItem, suggestions: 'loading' }]);
 });
