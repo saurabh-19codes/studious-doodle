@@ -175,3 +175,45 @@ describe('useScoringApi custom hook', () => {
     expect(setLlmResponseMock).toHaveBeenCalled();
   });
 });
+=======================#÷÷
+
+it('should merge data correctly when user_story_analysis is present (story branch)', async () => {
+  const setLlmResponseMock = jest.fn();
+
+  // Mock API response with user_story_analysis (story branch)
+  fetch.mockResolvedValueOnce({
+    json: jest.fn().mockResolvedValue({
+      status: 200,
+      body: {
+        user_story_analysis: [
+          { user_story_id: 'story1', score: 8 },
+        ],
+      },
+    }),
+  });
+
+  const { result } = renderHook(() =>
+    useScoringApi({
+      artifactType: 'story',
+      llmPayload: [{ user_story_id: 'story1' }],
+      setLlmResponse: setLlmResponseMock,
+      eventDetails: { event: 'test' },
+    })
+  );
+
+  // Call getScoring to trigger effect
+  await act(async () => {
+    await result.current.getScoring();
+  });
+
+  await waitFor(() => {
+    expect(setLlmResponseMock).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({
+          user_story_id: 'story1',
+          score: 8,
+        }),
+      ])
+    );
+  });
+});
