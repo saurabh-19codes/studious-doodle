@@ -225,4 +225,52 @@ it('should map suggestions when match is found', async () => {
   const response = mockSetLlmResponse.mock.calls[1][0]([testItem]);
   expect(response).toEqual([{ ...testItem, suggestions: ['mapped!'] }]);
 });
+=============4444444444444554444444
+
+
+
+it('should handle HTTP error responses (4xx, 5xx)', async () => {
+  // 👇 This hits line 67 because status !== 200
+  fetch.mockResolvedValue({
+    status: 500, // simulate server error
+    json: async () => ({ message: 'Internal server error' }),
+  });
+
+  const resultItem = { feature_id: 101, user_story_id: 201 };
+
+  const { result } = renderHook(() =>
+    useSuggestionHelper({
+      artifactType: 'feature',
+      llmPayload: [resultItem],
+      setLlmResponse: mockSetLlmResponse,
+    })
+  );
+
+  await act(async () => {
+    await result.current.getSuggestion();
+  });
+
+  // 👇 Grab the mapper function passed to setLlmResponse
+  const mapper = mockSetLlmResponse.mock.calls[1][0];
+
+  const response = mapper([resultItem]);
+
+  // ✅ This hits fallback logic — lines 71-75
+  expect(response).toEqual([{ ...resultItem, suggestions: 'error' }]);
+});
+
+it('should read suggestions from Redux state using useSelector', () => {
+  useSelector.mockReturnValue({ featureSuggestions: ['mock suggestion'] });
+
+  renderHook(() =>
+    useSuggestionHelper({
+      artifactType: 'feature',
+      llmPayload: [],
+      setLlmResponse: jest.fn(),
+    })
+  );
+
+  expect(useSelector).toHaveBeenCalled();
+});
+
 
