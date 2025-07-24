@@ -205,3 +205,118 @@ describe('useScoringApi', () => {
     });
   });
 });
+
+
+====================================
+import { renderHook, act } from '@testing-library/react';
+import useScoringApi from '../useScoringApi';
+import { useSelector } from 'react-redux';
+import * as logger from '../../../utils/logger';
+import * as auth from '../../../useAuthData';
+
+jest.mock('react-redux', () => ({
+  useSelector: jest.fn(),
+}));
+
+jest.mock('../../../useAuthData', () => ({
+  useUserData: jest.fn(),
+  useActiveOrg: jest.fn(),
+}));
+
+global.fetch = jest.fn();
+
+describe('useScoringApi', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+
+    useSelector.mockImplementation((selectorFn) =>
+      selectorFn({
+        getIn: (path) => {
+          if (path.join('.') === 'config.qeAssistUrl') return 'http://mock-qe-url';
+          if (path.join('.') === 'config.ELFEndpoints') return 'mock-log-url';
+          return null;
+        },
+      })
+    );
+
+    auth.useUserData.mockReturnValue({ addId: 'user123' });
+    auth.useActiveOrg.mockReturnValue({ code: 'org1' });
+
+    jest.spyOn(logger, 'logEvent').mockImplementation(jest.fn());
+  });
+
+  it('should set loading score for requested items and update with success response', async () => {
+    const llmPayload = [{ feature_id: 'f1' }, { feature_id: 'f2' }];
+
+    const mockApiResponse = {
+      body: {
+        Feature_Analysis: [
+          { feature_id: 'f1', score: 7 },
+          { feature_id: 'f2', score: 9 },
+        ],
+      },
+      status: 200,
+    };
+
+    fetch.mockResolvedValueOnce({
+      json: async () => mockApiResponse,
+    });
+
+    const setLmResponse = jest.fn();
+    const { result, waitForNextUpdate } = renderHook(() =>
+      useScoringApi({
+        artifactType: 'feature',
+        llmPayload,
+        setLmResponse,
+        eventDetails: 'test-event',
+      })
+    );
+
+    // Fire getScoring
+    await act(async () => {
+      await result.current.getScoring();
+      await waitForNextUpdate();
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      'http://mock-qe-url/api/analyze/feature',
+      expect.objectContaining({
+        method: 'POST',
+      })
+    );
+
+    // Validate loading and final result flow
+    expect(setLmResponse).toHaveBeenCalledTimes(2);
+
+    // Loading state
+    expect(setLmResponse.mock.calls[0][0]).toEqual(expect.any(Function));
+    const loadingResult = setLmResponse.mock.calls[0][0]([]);
+    expect(loadingResult).toEqual([
+      { feature_id: 'f1', score: 'loading' },
+      { feature_id: 'f2', score: 'loading' },
+    ]);
+
+    // Final updated score
+    const finalUpdate = setLmResponse.mock.calls[1][0];
+    const finalResult = finalUpdate([
+      { feature_id: 'f1', score: 'loading' },
+      { feature_id: 'f2', score: 'loading' },
+    ]);
+    expect(finalResult).toEqual([
+      { feature_id: 'f1', score: 7 },
+      { feature_id: 'f2', score: 9 },
+    ]);
+
+    // logEvent call
+    expect(logger.logEvent).toHaveBeenCalledWith({
+      message: 'QE_Assist',
+      event: 'test-event',
+      user: 'user123',
+      storyId: [],
+      score: [7, 9],
+      organization: 'org1',
+      correlationId: expect.any(String),
+      loggedAt: expect.any(Date),
+    });
+  });
+});
