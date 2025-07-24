@@ -52,4 +52,125 @@ it('should handle feature response shape with .map(x => x.data)', async () => {
   ]);
 });
 
+================÷÷÷÷÷÷÷÷÷÷÷÷÷÷÷÷÷÷÷÷÷
+
+it('should return original item if no match is found', async () => {
+  fetch.mockResolvedValue({
+    status: 200,
+    json: async () => ({
+      data: { data: [{ feature_id: 999, suggestions: ['not match'] }] }, // no match
+    }),
+  });
+
+  const testItem = { feature_id: 1, user_story_id: 2 };
+
+  const { result } = renderHook(() =>
+    useSuggestionHelper({
+      artifactType: 'feature',
+      llmPayload: [testItem],
+      setLlmResponse: mockSetLlmResponse,
+    })
+  );
+
+  await act(async () => {
+    await result.current.getSuggestion();
+  });
+
+  const mapper = mockSetLlmResponse.mock.calls[1][0];
+  const resultItem = mapper([testItem]);
+
+  expect(resultItem).toEqual([testItem]); // Line 75 hit
+});
+
+
+
+it('should parse feature suggestions correctly', async () => {
+  fetch.mockResolvedValue({
+    status: 200,
+    json: async () => ({
+      data: {
+        body: [{ data: ['suggestion 1'] }, { data: ['suggestion 2'] }],
+      },
+    }),
+  });
+
+  const { result } = renderHook(() =>
+    useSuggestionHelper({
+      artifactType: 'feature',
+      llmPayload: [
+        { feature_id: 1, user_story_id: 10 },
+        { feature_id: 2, user_story_id: 20 },
+      ],
+      setLlmResponse: mockSetLlmResponse,
+    })
+  );
+
+  await act(async () => {
+    await result.current.getSuggestion();
+  });
+
+  // ✅ Line 67 hit: body.map(x => x.data)
+  expect(mockSetLlmResponse).toHaveBeenCalled();
+});
+
+
+it('should handle HTTP error responses (4xx, 5xx)', async () => {
+  const mockResponse = {
+    status: 404,
+    json: jest.fn().mockResolvedValue({}),
+  };
+  fetch.mockResolvedValue(mockResponse);
+
+  const testPayload = [{ feature_id: 101, user_story_id: 201 }];
+
+  const { result } = renderHook(() =>
+    useSuggestionHelper({
+      artifactType: 'feature',
+      llmPayload: testPayload,
+      setLlmResponse: mockSetLlmResponse,
+    })
+  );
+
+  await act(async () => {
+    await result.current.getSuggestion();
+  });
+
+  // Get the second call to setLlmResponse
+  const secondCallFn = mockSetLlmResponse.mock.calls[1][0];
+  const input = [
+    { feature_id: 101, user_story_id: 201, suggestions: 'loading' },
+  ];
+  const resultItems = secondCallFn(input);
+
+  expect(resultItems).toEqual([
+    { feature_id: 101, user_story_id: 201, suggestions: 'error' },
+  ]);
+});
+
+
+it('should set loading true before fetch and false after', async () => {
+  fetch.mockResolvedValue({
+    status: 200,
+    json: async () => ({ data: { data: [] } }),
+  });
+
+  const { result } = renderHook(() =>
+    useSuggestionHelper({
+      artifactType: 'story',
+      llmPayload: [{ feature_id: 1 }],
+      setLlmResponse: mockSetLlmResponse,
+    })
+  );
+
+  expect(result.current.isSuggestionLoading).toBe(false);
+
+  await act(async () => {
+    const promise = result.current.getSuggestion();
+    expect(result.current.isSuggestionLoading).toBe(true); // <-- Line 23 hit
+    await promise;
+  });
+
+  expect(result.current.isSuggestionLoading).toBe(false);
+});
+
 
