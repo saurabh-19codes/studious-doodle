@@ -1,0 +1,158 @@
+import { renderHook, act } from '@testing-library/react-hooks';
+import { useSelector } from 'react-redux';
+import useScoringApi from './useScoringApi';
+import { v4 as uuidv4 } from 'uuid';
+
+// Mock dependencies
+jest.mock('react-redux', () => ({
+  useSelector: jest.fn(),
+}));
+
+jest.mock('uuid', () => ({
+  v4: jest.fn(),
+}));
+
+jest.mock('../useAuthData', () => ({
+  useActiveOrg: jest.fn(() => ({ code: 'ORG123' })),
+  useUserData: jest.fn(() => [{ addId: 'user-123' }]),
+}));
+
+jest.mock('../../constants', () => ({
+  FETCHYE_OPTIONS: {
+    headers: { 'Content-Type': 'application/json' },
+  },
+}));
+
+jest.mock('../../util/logger', () => ({
+  logEvent: jest.fn(),
+}));
+
+// Mock fetch globally
+global.fetch = jest.fn();
+
+describe('useScoringApi hook', () => {
+  const qeAssistUrl = 'http://mock-api';
+  const elfUrl = 'http://elf-api';
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    useSelector.mockImplementation((cb) =>
+      cb({
+        config: {
+          qeAssistUrl,
+          ELFEndpoints: elfUrl,
+        },
+      })
+    );
+    uuidv4.mockReturnValue('mock-uuid');
+  });
+
+  const setup = (params = {}) =>
+    renderHook(() =>
+      useScoringApi({
+        artifactType: params.artifactType || 'story',
+        llmPayload: params.llmPayload || [{ user_story_id: 1 }],
+        setLmResponse: params.setLmResponse || jest.fn(),
+        eventDetails: params.eventDetails || { name: 'event' },
+      })
+    );
+
+  test('initial state', () => {
+    const { result } = setup();
+    expect(result.current.isScoringLoading).toBe(false);
+    expect(result.current.scoringData).toBeNull();
+    expect(typeof result.current.getScoring).toBe('function');
+  });
+
+  test('successful API call with story data', async () => {
+    const mockResponse = {
+      status: 200,
+      body: {
+        user_story_analysis: [{ user_story_id: 1, score: 90 }],
+      },
+    };
+
+    fetch.mockResolvedValue({
+      json: async () => mockResponse,
+    });
+
+    const { result, waitForNextUpdate } = setup();
+    await act(async () => {
+      await result.current.getScoring();
+      await waitForNextUpdate();
+    });
+
+    expect(result.current.scoringData).toEqual(mockResponse);
+    expect(fetch).toHaveBeenCalledWith(
+      `${qeAssistUrl}/api/analyze/story`,
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.any(Object),
+      })
+    );
+  });
+
+  test('successful API call with feature data', async () => {
+    const mockResponse = {
+      status: 200,
+      body: {
+        Feature_Analysis: [{ feature_id: 2, score: 75 }],
+      },
+    };
+
+    fetch.mockResolvedValue({
+      json: async () => mockResponse,
+    });
+
+    const { result, waitForNextUpdate } = setup({
+      artifactType: 'feature',
+      llmPayload: [{ feature_id: 2 }],
+    });
+
+    await act(async () => {
+      await result.current.getScoring();
+      await waitForNextUpdate();
+    });
+
+    expect(result.current.scoringData).toEqual(mockResponse);
+    expect(fetch).toHaveBeenCalledWith(
+      `${qeAssistUrl}/api/analyze/feature`,
+      expect.objectContaining({
+        method: 'POST',
+      })
+    );
+  });
+
+  test('API call failure (status 500)', async () => {
+    const mockResponse = {
+      status: 500,
+      body: null,
+    };
+
+    fetch.mockResolvedValue({
+      json: async () => mockResponse,
+    });
+
+    const { result, waitForNextUpdate } = setup();
+
+    await act(async () => {
+      await result.current.getScoring();
+      await waitForNextUpdate();
+    });
+
+    expect(result.current.scoringData).toEqual(mockResponse);
+  });
+
+  test('network error should set error status', async () => {
+    fetch.mockRejectedValue(new Error('Network error'));
+
+    const { result, waitForNextUpdate } = setup();
+
+    await act(async () => {
+      await result.current.getScoring();
+      await waitForNextUpdate();
+    });
+
+    expect(result.current.scoringData).toEqual({ status: 500, body: null });
+  });
+});
