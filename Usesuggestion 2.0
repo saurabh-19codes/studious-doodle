@@ -173,4 +173,56 @@ it('should set loading true before fetch and false after', async () => {
   expect(result.current.isSuggestionLoading).toBe(false);
 });
 
+/////////////////////______________^^______
+it('should handle empty response data gracefully', async () => {
+  fetch.mockResolvedValue({
+    status: 200,
+    json: async () => ({ data: { data: [] } }), // Empty array
+  });
+
+  const { result } = renderHook(() =>
+    useSuggestionHelper({
+      artifactType: 'story',
+      llmPayload: [{ feature_id: 1, user_story_id: 2 }],
+      setLlmResponse: mockSetLlmResponse,
+    })
+  );
+
+  await act(async () => {
+    await result.current.getSuggestion();
+  });
+
+  expect(mockSetLlmResponse).toHaveBeenCalledTimes(2); // default + mapped
+});
+
+
+it('should map suggestions when match is found', async () => {
+  fetch.mockResolvedValue({
+    status: 200,
+    json: async () => ({
+      data: {
+        data: [
+          { feature_id: 1, user_story_id: 2, suggestions: ['mapped!'] },
+        ],
+      },
+    }),
+  });
+
+  const testItem = { feature_id: 1, user_story_id: 2 };
+
+  const { result } = renderHook(() =>
+    useSuggestionHelper({
+      artifactType: 'feature',
+      llmPayload: [testItem],
+      setLlmResponse: mockSetLlmResponse,
+    })
+  );
+
+  await act(async () => {
+    await result.current.getSuggestion();
+  });
+
+  const response = mockSetLlmResponse.mock.calls[1][0]([testItem]);
+  expect(response).toEqual([{ ...testItem, suggestions: ['mapped!'] }]);
+});
 
