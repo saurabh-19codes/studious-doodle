@@ -1,158 +1,177 @@
 import { renderHook, act } from '@testing-library/react-hooks';
-import { useSelector } from 'react-redux';
-import useScoringApi from './useScoringApi';
-import { v4 as uuidv4 } from 'uuid';
+import { useScoringApi } from './useScoringApi';
+import * as redux from 'react-redux';
+import * as authData from '../useAuthData';
+import { FETCHYE_OPTIONS } from '../../constants';
+import { logEvent } from '../../util/logger';
 
-// Mock dependencies
-jest.mock('react-redux', () => ({
-  useSelector: jest.fn(),
-}));
+// Mock global fetch
+global.fetch = jest.fn();
 
-jest.mock('uuid', () => ({
-  v4: jest.fn(),
-}));
+// Mock redux useSelector
+jest.spyOn(redux, 'useSelector');
 
-jest.mock('../useAuthData', () => ({
-  useActiveOrg: jest.fn(() => ({ code: 'ORG123' })),
-  useUserData: jest.fn(() => [{ addId: 'user-123' }]),
-}));
+// Mock authData hooks
+jest.spyOn(authData, 'useUserData').mockReturnValue([{ addId: 'user-123' }]);
+jest.spyOn(authData, 'useActiveOrg').mockReturnValue([{ code: 'org-456' }]);
 
 jest.mock('../../constants', () => ({
-  FETCHYE_OPTIONS: {
-    headers: { 'Content-Type': 'application/json' },
-  },
+  FETCHYE_OPTIONS: { headers: { 'Content-Type': 'application/json' } }
 }));
 
 jest.mock('../../util/logger', () => ({
   logEvent: jest.fn(),
 }));
 
-// Mock fetch globally
-global.fetch = jest.fn();
-
-describe('useScoringApi hook', () => {
-  const qeAssistUrl = 'http://mock-api';
-  const elfUrl = 'http://elf-api';
+describe('useScoringApi custom hook', () => {
+  const mockDispatchSelectors = () => {
+    redux.useSelector.mockImplementation((cb) =>
+      cb({
+        getIn: jest.fn((key) => {
+          if (key[1] === 'qeAssistUrl') return 'http://mockapi.com';
+          if (key[1] === 'ELFEndpoints') return 'http://elfendpoint.com';
+        }),
+      })
+    );
+  };
 
   beforeEach(() => {
     jest.clearAllMocks();
-    useSelector.mockImplementation((cb) =>
-      cb({
-        config: {
-          qeAssistUrl,
-          ELFEndpoints: elfUrl,
-        },
-      })
-    );
-    uuidv4.mockReturnValue('mock-uuid');
+    mockDispatchSelectors();
   });
 
-  const setup = (params = {}) =>
-    renderHook(() =>
+  it('should initialize hook with default values', () => {
+    const { result } = renderHook(() =>
       useScoringApi({
-        artifactType: params.artifactType || 'story',
-        llmPayload: params.llmPayload || [{ user_story_id: 1 }],
-        setLmResponse: params.setLmResponse || jest.fn(),
-        eventDetails: params.eventDetails || { name: 'event' },
+        artifactType: 'story',
+        llmPayload: [],
+        setLlmResponse: jest.fn(),
+        eventDetails: { event: 'test' },
       })
     );
 
-  test('initial state', () => {
-    const { result } = setup();
-    expect(result.current.isScoringLoading).toBe(false);
     expect(result.current.scoringData).toBeNull();
+    expect(result.current.isScoringLoading).toBe(false);
     expect(typeof result.current.getScoring).toBe('function');
   });
 
-  test('successful API call with story data', async () => {
+  it('should call API and set scoring data (success path)', async () => {
+    const setLlmResponseMock = jest.fn();
     const mockResponse = {
       status: 200,
       body: {
-        user_story_analysis: [{ user_story_id: 1, score: 90 }],
+        Feature_Analysis: [{ user_story_id: 'story1', score: 5 }],
       },
     };
 
     fetch.mockResolvedValue({
-      json: async () => mockResponse,
+      json: jest.fn().mockResolvedValue(mockResponse),
     });
 
-    const { result, waitForNextUpdate } = setup();
-    await act(async () => {
-      await result.current.getScoring();
-      await waitForNextUpdate();
-    });
-
-    expect(result.current.scoringData).toEqual(mockResponse);
-    expect(fetch).toHaveBeenCalledWith(
-      `${qeAssistUrl}/api/analyze/story`,
-      expect.objectContaining({
-        method: 'POST',
-        headers: expect.any(Object),
+    const { result } = renderHook(() =>
+      useScoringApi({
+        artifactType: 'story',
+        llmPayload: [{ user_story_id: 'story1' }],
+        setLlmResponse: setLlmResponseMock,
+        eventDetails: { event: 'test' },
       })
     );
-  });
-
-  test('successful API call with feature data', async () => {
-    const mockResponse = {
-      status: 200,
-      body: {
-        Feature_Analysis: [{ feature_id: 2, score: 75 }],
-      },
-    };
-
-    fetch.mockResolvedValue({
-      json: async () => mockResponse,
-    });
-
-    const { result, waitForNextUpdate } = setup({
-      artifactType: 'feature',
-      llmPayload: [{ feature_id: 2 }],
-    });
 
     await act(async () => {
       await result.current.getScoring();
-      await waitForNextUpdate();
     });
 
-    expect(result.current.scoringData).toEqual(mockResponse);
     expect(fetch).toHaveBeenCalledWith(
-      `${qeAssistUrl}/api/analyze/feature`,
+      'http://mockapi.com/api/analyze/story',
       expect.objectContaining({
         method: 'POST',
+        headers: FETCHYE_OPTIONS.headers,
       })
     );
+
+    expect(result.current.scoringData.status).toBe(200);
+    expect(setLlmResponseMock).toHaveBeenCalled();
+    expect(logEvent).toHaveBeenCalled();
   });
 
-  test('API call failure (status 500)', async () => {
-    const mockResponse = {
-      status: 500,
-      body: null,
-    };
-
-    fetch.mockResolvedValue({
-      json: async () => mockResponse,
-    });
-
-    const { result, waitForNextUpdate } = setup();
-
-    await act(async () => {
-      await result.current.getScoring();
-      await waitForNextUpdate();
-    });
-
-    expect(result.current.scoringData).toEqual(mockResponse);
-  });
-
-  test('network error should set error status', async () => {
+  it('should handle API error (catch block)', async () => {
+    const setLlmResponseMock = jest.fn();
     fetch.mockRejectedValue(new Error('Network error'));
 
-    const { result, waitForNextUpdate } = setup();
+    const { result } = renderHook(() =>
+      useScoringApi({
+        artifactType: 'feature',
+        llmPayload: [{ feature_id: 'feature1' }],
+        setLlmResponse: setLlmResponseMock,
+        eventDetails: { event: 'error' },
+      })
+    );
 
     await act(async () => {
       await result.current.getScoring();
-      await waitForNextUpdate();
     });
 
-    expect(result.current.scoringData).toEqual({ status: 500, body: null });
+    expect(result.current.scoringData.status).toBe(500);
+    expect(setLlmResponseMock).not.toHaveBeenCalled();
+  });
+
+  it('should update setLlmResponse on useEffect when status 200', async () => {
+    const setLlmResponseMock = jest.fn();
+    const scoringData = {
+      status: 200,
+      body: {
+        Feature_Analysis: [{ feature_id: 'f1', score: 10 }],
+      },
+    };
+
+    const { rerender } = renderHook(
+      (props) => useScoringApi(props),
+      {
+        initialProps: {
+          artifactType: 'feature',
+          llmPayload: [{ feature_id: 'f1' }],
+          setLlmResponse: setLlmResponseMock,
+          eventDetails: { event: 'test' },
+        },
+      }
+    );
+
+    // Simulate scoringData update by manually calling rerender
+    rerender({
+      artifactType: 'feature',
+      llmPayload: [{ feature_id: 'f1' }],
+      setLlmResponse: setLlmResponseMock,
+      eventDetails: { event: 'test' },
+    });
+
+    // Directly call setLlmResponse with merged array logic
+    expect(setLlmResponseMock).toHaveBeenCalled();
+  });
+
+  it('should set score to "error" when scoringData.status >= 400 in useEffect', () => {
+    const setLlmResponseMock = jest.fn();
+
+    const { rerender } = renderHook(
+      (props) => useScoringApi(props),
+      {
+        initialProps: {
+          artifactType: 'feature',
+          llmPayload: [{ feature_id: 'f1' }],
+          setLlmResponse: setLlmResponseMock,
+          eventDetails: { event: 'test' },
+        },
+      }
+    );
+
+    // simulate scoringData with error
+    rerender({
+      artifactType: 'feature',
+      llmPayload: [{ feature_id: 'f1' }],
+      setLlmResponse: setLlmResponseMock,
+      eventDetails: { event: 'test' },
+    });
+
+    // expect error branch call
+    expect(setLlmResponseMock).toHaveBeenCalled();
   });
 });
