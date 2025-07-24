@@ -217,3 +217,79 @@ it('should merge data correctly when user_story_analysis is present (story branc
     );
   });
 });
+=========÷===÷=============÷÷============
+
+it('should merge Feature_Analysis data when status 200', async () => {
+  const setLlmResponseMock = jest.fn();
+
+  // Mock API response with Feature_Analysis
+  fetch.mockResolvedValueOnce({
+    json: jest.fn().mockResolvedValue({
+      status: 200,
+      body: {
+        Feature_Analysis: [
+          { feature_id: 'f1', score: 10 },
+        ],
+      },
+    }),
+  });
+
+  const { result } = renderHook(() =>
+    useScoringApi({
+      artifactType: 'feature',
+      llmPayload: [{ feature_id: 'f1' }],
+      setLlmResponse: setLlmResponseMock,
+      eventDetails: { event: 'test' },
+    })
+  );
+
+  // Trigger API
+  await act(async () => {
+    await result.current.getScoring();
+  });
+
+  await waitFor(() => {
+    expect(setLlmResponseMock).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ feature_id: 'f1', score: 10 }),
+      ])
+    );
+  });
+});
+
+it('should merge user_story_analysis data when status 200', async () => {
+  const setLlmResponseMock = jest.fn();
+
+  // Mock API response with user_story_analysis
+  fetch.mockResolvedValueOnce({
+    json: jest.fn().mockResolvedValue({
+      status: 200,
+      body: {
+        user_story_analysis: [
+          { user_story_id: 's1', score: 8 },
+        ],
+      },
+    }),
+  });
+
+  const { result } = renderHook(() =>
+    useScoringApi({
+      artifactType: 'story',
+      llmPayload: [{ user_story_id: 's1' }],
+      setLlmResponse: setLlmResponseMock,
+      eventDetails: { event: 'test' },
+    })
+  );
+
+  await act(async () => {
+    await result.current.getScoring();
+  });
+
+  await waitFor(() => {
+    expect(setLlmResponseMock).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ user_story_id: 's1', score: 8 }),
+      ])
+    );
+  });
+});
