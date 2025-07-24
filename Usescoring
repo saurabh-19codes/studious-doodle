@@ -1,0 +1,207 @@
+import { renderHook, act } from '@testing-library/react-hooks';
+import useScoringApi from '../useScoringApi';
+import { useSelector } from 'react-redux';
+import * as useUserDataModule from '../../useAuthData';
+import * as logger from '../../../util/logger';
+
+global.fetch = jest.fn();
+
+jest.mock('react-redux', () => ({
+  useSelector: jest.fn(),
+}));
+
+jest.mock('../../useAuthData', () => ({
+  useUserData: jest.fn(),
+  useActiveOrg: jest.fn(),
+}));
+
+jest.mock('uuid', () => ({
+  v4: () => 'mock-uuid',
+}));
+
+describe('useScoringApi', () => {
+  const mockSetLmResponse = jest.fn();
+  const qeAssistLlmUrl = 'https://mock-qeapi.com';
+  const elfLogUrl = 'https://mock-elf.com';
+  const user = { addSid: 'user123' };
+  const activeOrg = { code: 'ORG1' };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+
+    useSelector.mockImplementation((selector) =>
+      selector({
+        config: {
+          qeAssistUrl: qeAssistLlmUrl,
+          ELFEndpoints: elfLogUrl,
+        },
+      })
+    );
+
+    useUserDataModule.useUserData.mockReturnValue([user]);
+    useUserDataModule.useActiveOrg.mockReturnValue([activeOrg]);
+  });
+
+  it('should set loading score for requested items and then update with success', async () => {
+    const mockPayload = [
+      { feature_id: 'f1' },
+      { feature_id: 'f2' },
+    ];
+
+    const mockApiResponse = {
+      status: 200,
+      body: {
+        Feature_Analysis: [
+          { feature_id: 'f1', score: 5 },
+          { feature_id: 'f2', score: 7 },
+        ],
+      },
+    };
+
+    fetch.mockResolvedValueOnce({
+      json: () => Promise.resolve(mockApiResponse),
+    });
+
+    const { result, waitForNextUpdate } = renderHook(() =>
+      useScoringApi({
+        artifactType: 'feature',
+        llmPayload: mockPayload,
+        setLmResponse: mockSetLmResponse,
+        eventDetails: { key: 'value' },
+      })
+    );
+
+    act(() => {
+      result.current.getScoring();
+    });
+
+    // Loading state
+    expect(result.current.isScoringLoading).toBe(true);
+
+    await waitForNextUpdate();
+
+    expect(fetch).toHaveBeenCalledWith(
+      `${qeAssistLlmUrl}/api/analyze/feature`,
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.any(Object),
+        body: JSON.stringify(mockPayload),
+      })
+    );
+
+    expect(result.current.scoringData).toEqual(mockApiResponse);
+    expect(result.current.isScoringLoading).toBe(false);
+  });
+
+  it('should update score with error if API fails', async () => {
+    const mockPayload = [{ feature_id: 'f1' }];
+
+    fetch.mockRejectedValueOnce(new Error('Network error'));
+
+    const { result, waitForNextUpdate } = renderHook(() =>
+      useScoringApi({
+        artifactType: 'feature',
+        llmPayload: mockPayload,
+        setLmResponse: mockSetLmResponse,
+        eventDetails: {},
+      })
+    );
+
+    act(() => {
+      result.current.getScoring();
+    });
+
+    await waitForNextUpdate();
+
+    expect(result.current.scoringData).toEqual({
+      status: 500,
+      body: null,
+    });
+
+    expect(result.current.isScoringLoading).toBe(false);
+  });
+
+  it('should handle story payload and return user story analysis', async () => {
+    const mockPayload = [
+      { user_story_id: 'us1' },
+      { user_story_id: 'us2' },
+    ];
+
+    const mockApiResponse = {
+      status: 200,
+      body: {
+        user_story_analysis: [
+          { user_story_id: 'us1', score: 3 },
+          { user_story_id: 'us2', score: 4 },
+        ],
+      },
+    };
+
+    fetch.mockResolvedValueOnce({
+      json: () => Promise.resolve(mockApiResponse),
+    });
+
+    const { result, waitForNextUpdate } = renderHook(() =>
+      useScoringApi({
+        artifactType: 'story',
+        llmPayload: mockPayload,
+        setLmResponse: mockSetLmResponse,
+        eventDetails: {},
+      })
+    );
+
+    act(() => {
+      result.current.getScoring();
+    });
+
+    await waitForNextUpdate();
+
+    expect(result.current.scoringData).toEqual(mockApiResponse);
+    expect(result.current.isScoringLoading).toBe(false);
+  });
+
+  it('should call logger.logEvent with correlation ID', async () => {
+    const logEventSpy = jest.spyOn(logger, 'logEvent');
+    const mockPayload = [{ feature_id: 'f1' }];
+    const mockApiResponse = {
+      status: 200,
+      body: {
+        Feature_Analysis: [
+          { feature_id: 'f1', score: 10 },
+        ],
+      },
+    };
+
+    fetch.mockResolvedValueOnce({
+      json: () => Promise.resolve(mockApiResponse),
+    });
+
+    const { result, waitForNextUpdate } = renderHook(() =>
+      useScoringApi({
+        artifactType: 'feature',
+        llmPayload: mockPayload,
+        setLmResponse: mockSetLmResponse,
+        eventDetails: { mock: 'event' },
+      })
+    );
+
+    act(() => {
+      result.current.getScoring();
+    });
+
+    await waitForNextUpdate();
+
+    expect(logEventSpy).toHaveBeenCalledWith({
+      message: 'QE_Assist',
+      event: { mock: 'event' },
+      user: user.addSid,
+      storyId: [],
+      score: [10],
+      organization: activeOrg.code,
+      correlationId: 'mock-uuid',
+      loggedAt: expect.any(Date),
+      level: 'INFO',
+      url: elfLogUrl,
+    });
+  });
+});
