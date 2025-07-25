@@ -242,3 +242,55 @@ it('sets suggestions to loading for matching ids', async () => {
 
   expect(mockSetLmResponseFn).toHaveBeenCalled();
 });
+
+
+it('parses feature-type suggestion response using x.data (line 70 coverage)', async () => {
+  fetch.mockResolvedValueOnce({
+    status: 200,
+    json: async () => ({
+      message: 'Suggested Feature Generated successfully',
+      data: [
+        {
+          feature_id: 'F780672',
+          data: [
+            {
+              Suggested_Feature: '1. Business Objective',
+              Description: 'Migration of UK processing bank...',
+            },
+          ],
+        },
+      ],
+    }),
+  });
+
+  const mockSetLmResponseFn = jest.fn((updateFn) => {
+    const result = updateFn([
+      { feature_id: 'F780672', suggestions: '' },
+    ]);
+    expect(result).toEqual([
+      {
+        feature_id: 'F780672',
+        suggestions: [
+          {
+            Suggested_Feature: '1. Business Objective',
+            Description: 'Migration of UK processing bank...',
+          },
+        ],
+      },
+    ]);
+  });
+
+  const { result } = renderHook(() =>
+    useSuggestionHelper({
+      artifactType: 'feature',
+      llmPayload: mockFeaturePayload,
+      setLmResponse: mockSetLmResponseFn,
+    })
+  );
+
+  await act(async () => {
+    await result.current.getSuggestion();
+  });
+
+  expect(mockSetLmResponseFn).toHaveBeenCalled();
+});
