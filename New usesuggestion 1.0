@@ -279,3 +279,56 @@ it('should handle network or fetch errors and fallback to status 500', async () 
   ]);
 });
 
+
+it('should execute body.map(x => x.data) inside useEffect (cover line)', async () => {
+  const payload = [
+    {
+      feature_id: 'F123',
+      feature_name: 'Test Feature',
+    },
+  ];
+
+  const responseBody = [
+    {
+      feature_id: 'F123',
+      data: {
+        Suggested_Feature: 'Auto-generated text',
+      },
+    },
+  ];
+
+  mockFetch.mockResolvedValue({
+    status: 200,
+    json: async () => ({ data: responseBody }),
+  });
+
+  const { result } = renderHook(() =>
+    useSuggestionHelper({
+      artifactType: 'feature',
+      llmPayload: payload,
+      setLmResponse: mockSetLmResponse,
+    })
+  );
+
+  act(() => {
+    result.current.getSuggestion();
+  });
+
+  // Wait for useEffect to run and setLmResponse to be called
+  await waitFor(() => {
+    expect(mockSetLmResponse).toHaveBeenCalledTimes(2);
+  });
+
+  // Just verifying that map ran — you can inspect suggestions here too
+  const setFn = mockSetLmResponse.mock.calls[1][0];
+  const updated = setFn(payload);
+
+  expect(updated).toEqual([
+    {
+      ...payload[0],
+      suggestions: {
+        Suggested_Feature: 'Auto-generated text',
+      },
+    },
+  ]);
+});
