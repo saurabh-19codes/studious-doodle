@@ -359,3 +359,81 @@ it('wraps llmPayload in array if not already an array (featurePayload line)', as
   expect(Array.isArray(bodySent.featurePayload)).toBe(true);
   expect(bodySent.featurePayload[0].feature_id).toBe('F780672');
 });
+
+it('updates setLlmResponse with matched suggestions in useEffect', async () => {
+  const initialState = [
+    {
+      feature_id: 'F780672',
+      suggestions: '',
+    },
+  ];
+
+  const mockSetLlmResponse = jest.fn((fn) => {
+    const updated = fn(initialState);
+    expect(updated).toEqual([
+      {
+        feature_id: 'F780672',
+        suggestions: { feature_id: 'F780672', suggestion: 'matched suggestion' },
+      },
+    ]);
+  });
+
+  fetch.mockResolvedValueOnce({
+    status: 200,
+    json: async () => ({
+      body: [{ feature_id: 'F780672', suggestion: 'matched suggestion' }],
+    }),
+  });
+
+  const { result } = renderHook(() =>
+    useSuggestionHelper({
+      artifactType: 'feature',
+      llmPayload: [{ feature_id: 'F780672' }],
+      setLmResponse: mockSetLlmResponse,
+    })
+  );
+
+  await act(async () => {
+    await result.current.getSuggestion();
+  });
+
+  // useEffect runs after suggestionData is set
+  expect(mockSetLlmResponse).toHaveBeenCalled();
+});
+
+
+it('updates setLlmResponse with error in suggestions when status is 400-599', async () => {
+  const initialState = [
+    {
+      feature_id: 'F780672',
+      suggestions: '',
+    },
+  ];
+
+  const mockSetLlmResponse = jest.fn((fn) => {
+    const updated = fn(initialState);
+    expect(updated).toEqual([
+      { feature_id: 'F780672', suggestions: 'error' },
+    ]);
+  });
+
+  fetch.mockResolvedValueOnce({
+    status: 500,
+    json: async () => ({}),
+  });
+
+  const { result } = renderHook(() =>
+    useSuggestionHelper({
+      artifactType: 'feature',
+      llmPayload: [{ feature_id: 'F780672' }],
+      setLmResponse: mockSetLlmResponse,
+    })
+  );
+
+  await act(async () => {
+    await result.current.getSuggestion();
+  });
+
+  // after fetch, useEffect will run with error status
+  expect(mockSetLlmResponse).toHaveBeenCalled();
+});
