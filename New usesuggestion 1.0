@@ -1,0 +1,247 @@
+import { renderHook, act } from '@testing-library/react-hooks';
+import useSuggestionHelper from '../hooks/qeassist/useSuggestionApi';
+import { useSelector } from 'react-redux';
+import { v4 as uuidv4 } from 'uuid';
+
+// Mock modules
+jest.mock('react-redux', () => ({
+  useSelector: jest.fn(),
+}));
+jest.mock('uuid', () => ({
+  v4: jest.fn(),
+}));
+
+const mockSetLmResponse = jest.fn();
+const mockFetch = jest.fn();
+
+global.fetch = mockFetch;
+
+describe('useSuggestionHelper', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    useSelector.mockImplementation((cb) =>
+      cb({ getIn: () => 'https://qeassist-dev.aexp.com' })
+    );
+    uuidv4.mockReturnValue('uuid-123');
+  });
+
+  it('should send correct payload for story type and set response', async () => {
+    const payload = [
+      {
+        user_story_id: 'US123',
+        user_story_name: 'Story Name',
+        feature_id: 'F1',
+      },
+    ];
+
+    const apiResponse = {
+      status: 200,
+      json: async () => ({
+        data: [
+          {
+            user_story_id: 'US123',
+            data: {
+              Suggested_User_story: 'Refined User Story',
+            },
+          },
+        ],
+      }),
+    };
+
+    mockFetch.mockResolvedValue(apiResponse);
+
+    const { result, waitForNextUpdate } = renderHook(() =>
+      useSuggestionHelper({
+        artifactType: 'story',
+        llmPayload: payload,
+        setLmResponse: mockSetLmResponse,
+      })
+    );
+
+    act(() => {
+      result.current.getSuggestion();
+    });
+
+    await waitForNextUpdate();
+
+    // check fetch payload
+    const expectedBody = JSON.stringify({
+      artifactType: 'story',
+      user_stories: payload,
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      'https://qeassist-dev.aexp.com/api/suggest/story',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'X-Correlation-ID': 'uuid-123',
+        }),
+        body: expectedBody,
+      })
+    );
+
+    expect(mockSetLmResponse).toHaveBeenCalledWith(
+      expect.any(Function)
+    );
+
+    // simulate callback execution
+    const setFn = mockSetLmResponse.mock.calls[0][0];
+    const updated = setFn(payload);
+    expect(updated).toEqual([
+      {
+        ...payload[0],
+        suggestions: {
+          Suggested_User_story: 'Refined User Story',
+        },
+      },
+    ]);
+  });
+
+  it('should send correct payload for feature type and set response', async () => {
+    const payload = [
+      {
+        feature_id: 'F123',
+        feature_name: 'Feature A',
+      },
+    ];
+
+    const apiResponse = {
+      status: 200,
+      json: async () => ({
+        data: [
+          {
+            feature_id: 'F123',
+            data: {
+              Suggested_Feature: 'Refined Feature',
+            },
+          },
+        ],
+      }),
+    };
+
+    mockFetch.mockResolvedValue(apiResponse);
+
+    const { result, waitForNextUpdate } = renderHook(() =>
+      useSuggestionHelper({
+        artifactType: 'feature',
+        llmPayload: payload,
+        setLmResponse: mockSetLmResponse,
+      })
+    );
+
+    act(() => {
+      result.current.getSuggestion();
+    });
+
+    await waitForNextUpdate();
+
+    expect(fetch).toHaveBeenCalledWith(
+      'https://qeassist-dev.aexp.com/api/suggest/features',
+      expect.objectContaining({
+        body: JSON.stringify({
+          artifactType: 'features',
+          featurePayload: payload,
+        }),
+      })
+    );
+
+    const setFn = mockSetLmResponse.mock.calls[0][0];
+    const updated = setFn(payload);
+    expect(updated).toEqual([
+      {
+        ...payload[0],
+        suggestions: {
+          Suggested_Feature: 'Refined Feature',
+        },
+      },
+    ]);
+  });
+
+  it('should set loading state and reset after completion', async () => {
+    mockFetch.mockResolvedValue({
+      status: 200,
+      json: async () => ({ data: [] }),
+    });
+
+    const { result, waitForNextUpdate } = renderHook(() =>
+      useSuggestionHelper({
+        artifactType: 'story',
+        llmPayload: [],
+        setLmResponse: mockSetLmResponse,
+      })
+    );
+
+    expect(result.current.isSuggestionLoading).toBe(false);
+
+    act(() => {
+      result.current.getSuggestion();
+    });
+
+    expect(result.current.isSuggestionLoading).toBe(true);
+    await waitForNextUpdate();
+    expect(result.current.isSuggestionLoading).toBe(false);
+  });
+
+  it('should handle 4xx errors and set error suggestion', async () => {
+    mockFetch.mockResolvedValue({
+      status: 404,
+      json: async () => ({ message: 'Not Found' }),
+    });
+
+    const payload = [
+      {
+        feature_id: 'F123',
+      },
+    ];
+
+    const { result, waitForNextUpdate } = renderHook(() =>
+      useSuggestionHelper({
+        artifactType: 'feature',
+        llmPayload: payload,
+        setLmResponse: mockSetLmResponse,
+      })
+    );
+
+    act(() => {
+      result.current.getSuggestion();
+    });
+
+    await waitForNextUpdate();
+
+    const setFn = mockSetLmResponse.mock.calls[0][0];
+    const updated = setFn(payload);
+    expect(updated).toEqual([
+      {
+        ...payload[0],
+        suggestions: 'error',
+      },
+    ]);
+  });
+
+  it('should handle network or fetch errors and fallback to status 500', async () => {
+    mockFetch.mockRejectedValue(new Error('Network error'));
+
+    const payload = [
+      {
+        user_story_id: 'US123',
+      },
+    ];
+
+    const { result, waitForNextUpdate } = renderHook(() =>
+      useSuggestionHelper({
+        artifactType: 'story',
+        llmPayload: payload,
+        setLmResponse: mockSetLmResponse,
+      })
+    );
+
+    act(() => {
+      result.current.getSuggestion();
+    });
+
+    await waitForNextUpdate();
+
+    expect(mockSetLmResponse).not.toHaveBeenCalled(); // should not call for failed API
+  });
+});
