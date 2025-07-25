@@ -320,3 +320,42 @@ it('handles feature type response with body as array and maps x.data', async () 
 
   expect(mockSetLmResponseFn).toHaveBeenCalled();
 });
+
+it('wraps llmPayload in array if not already an array (featurePayload line)', async () => {
+  const singleFeaturePayload = {
+    feature_id: 'F780672',
+    feature_name: 'Single Feature',
+    feature_description: 'Just one',
+    feature_acceptance_criteria: 'Only one',
+    user_stories: [],
+    feature_objectId: '812879424619',
+    feature_reference: 'https://rally1.rallydev.com/slm/webservice/v2.0/portfolioitem/feature/812879424619',
+  };
+
+  fetch.mockResolvedValueOnce({
+    status: 200,
+    json: async () => ({
+      message: 'Single feature handled',
+      data: [{ feature_id: 'F780672', suggestion: 'Good feature' }],
+    }),
+  });
+
+  const mockSetLmResponseFn = jest.fn();
+
+  const { result } = renderHook(() =>
+    useSuggestionHelper({
+      artifactType: 'feature',
+      llmPayload: singleFeaturePayload, // <<--- NOT an array
+      setLmResponse: mockSetLmResponseFn,
+    })
+  );
+
+  await act(async () => {
+    await result.current.getSuggestion();
+  });
+
+  expect(fetch).toHaveBeenCalledTimes(1);
+  const bodySent = JSON.parse(fetch.mock.calls[0][1].body);
+  expect(Array.isArray(bodySent.featurePayload)).toBe(true);
+  expect(bodySent.featurePayload[0].feature_id).toBe('F780672');
+});
