@@ -1,50 +1,201 @@
-test('adds suggestions to matching feature item', async () => {
-  const mockSetLmResponse = vi.fn();
+// useSuggestionApi.spec.js
 
-  const payload = {
-    artifactType: 'feature',
-    orgName: ['org1'],
-    featureId: 'F123',
-  };
+import { renderHook, act } from '@testing-library/react-hooks';
+import useSuggestionHelper from '../hooks/qeassist/useSuggestionApi';
+import { useSelector } from 'react-redux';
 
-  const mockResponse = {
-    body: [
-      {
-        feature_id: 'F123',
-        data: { Suggested_Feature: 'Test feature suggestion' },
-      },
-    ],
-  };
+jest.mock('react-redux', () => ({
+  useSelector: jest.fn(),
+}));
 
-  global.fetch = vi.fn().mockResolvedValueOnce({
-    ok: true,
-    json: async () => mockResponse,
+global.fetch = jest.fn();
+
+const mockSetLmResponse = jest.fn();
+
+const mockStoryPayload = [
+  {
+    user_story_id: 'US5348674',
+    user_story_name: 'RSS: Migrate UK Processing Bank from Barclays to Citi 1',
+    user_story_description: 'As a PO I would like team to complete: File Tys.',
+    user_story_acceptance_criteria: 'In order for this story to be accepted k',
+    user_story_objectId: '812879429659',
+    user_story_reference: 'https://rally1.rallydev.com/slm/webservice/v2.0/hierarchicalrequirement/812879429659',
+  },
+];
+
+const mockStoryResponse = {
+  message: 'Suggested User Stories Generated successfully',
+  data: [
+    {
+      user_story_id: 'US5348674',
+      Suggested_User_story: 'Refined User Story',
+      Business_Objective: 'Ensure seamless migration',
+      User_Roles: 'Product Owner (PO): Overseas',
+      Description: 'As a Product Owner, I want...',
+      Acceptance_Criteria: 'File updates...',
+    },
+  ],
+};
+
+const mockFeaturePayload = [
+  {
+    feature_id: 'F780672',
+    feature_name: 'RSS: Migrate UK Processing Bank from Barclays to Citi',
+    feature_description: 'As a product owner, I need RSS...',
+    feature_acceptance_criteria: 'In order for this feature to be marked',
+    user_stories: [],
+    feature_objectId: '812879424619',
+    feature_reference: 'https://rally1.rallydev.com/slm/webservice/v2.0/portfolioitem/feature/812879424619',
+  },
+];
+
+const mockFeatureResponse = {
+  message: 'Suggested Feature Generated successfully',
+  data: [
+    {
+      feature_id: 'F780672',
+      Suggested_Feature: '1. Business Objective',
+      Description: 'This feature involves migrating...',
+    },
+  ],
+};
+
+
+describe('useSuggestionHelper', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    useSelector.mockReturnValue('https://qeassist-dev.aexp.com');
   });
 
-  renderHook(() =>
-    useSuggestionApi({
-      lmPayload: payload,
-      setLmResponse: mockSetLmResponse,
-    })
-  );
+  it('handles successful story suggestion fetch', async () => {
+    fetch.mockResolvedValueOnce({
+      status: 200,
+      json: async () => mockStoryResponse,
+    });
 
-  await waitFor(() => expect(mockSetLmResponse).toHaveBeenCalledTimes(2));
+    const { result, waitForNextUpdate } = renderHook(() =>
+      useSuggestionHelper({
+        artifactType: 'story',
+        llmPayload: mockStoryPayload,
+        setLmResponse: mockSetLmResponse,
+      })
+    );
 
-  // Second call = updater function
-  const updateFn = mockSetLmResponse.mock.calls[1][0];
+    await act(async () => {
+      await result.current.getSuggestion();
+    });
 
-  const result = updateFn([
-    {
-      feature_id: 'F123',
-      feature_name: 'Test Feature',
-    },
-  ]);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(result.current.isSuggestionLoading).toBe(false);
+    expect(mockSetLmResponse).toHaveBeenCalled();
+    expect(result.current.suggestionData.status).toBe(200);
+  });
 
-  expect(result).toEqual([
-    {
-      feature_id: 'F123',
-      feature_name: 'Test Feature',
-      suggestions: { Suggested_Feature: 'Test feature suggestion' },
-    },
-  ]);
+  it('handles successful feature suggestion fetch', async () => {
+    fetch.mockResolvedValueOnce({
+      status: 200,
+      json: async () => mockFeatureResponse,
+    });
+
+    const { result } = renderHook(() =>
+      useSuggestionHelper({
+        artifactType: 'feature',
+        llmPayload: mockFeaturePayload,
+        setLmResponse: mockSetLmResponse,
+      })
+    );
+
+    await act(async () => {
+      await result.current.getSuggestion();
+    });
+
+    expect(result.current.isSuggestionLoading).toBe(false);
+    expect(mockSetLmResponse).toHaveBeenCalled();
+    expect(result.current.suggestionData.status).toBe(200);
+  });
+
+  it('handles error response from API', async () => {
+    fetch.mockResolvedValueOnce({
+      status: 500,
+      json: async () => ({ error: 'Something went wrong' }),
+    });
+
+    const { result } = renderHook(() =>
+      useSuggestionHelper({
+        artifactType: 'story',
+        llmPayload: mockStoryPayload,
+        setLmResponse: mockSetLmResponse,
+      })
+    );
+
+    await act(async () => {
+      await result.current.getSuggestion();
+    });
+
+    expect(result.current.isSuggestionLoading).toBe(false);
+    expect(result.current.suggestionData.status).toBe(500);
+    expect(mockSetLmResponse).toHaveBeenCalled();
+  });
+
+  it('handles exception thrown in fetch', async () => {
+    fetch.mockRejectedValueOnce(new Error('Network Error'));
+
+    const { result } = renderHook(() =>
+      useSuggestionHelper({
+        artifactType: 'feature',
+        llmPayload: mockFeaturePayload,
+        setLmResponse: mockSetLmResponse,
+      })
+    );
+
+    await act(async () => {
+      await result.current.getSuggestion();
+    });
+
+    expect(result.current.suggestionData.status).toBe(500);
+    expect(mockSetLmResponse).toHaveBeenCalled();
+  });
+
+  it('sets loading state to true on getSuggestion call', async () => {
+    fetch.mockResolvedValueOnce({
+      status: 200,
+      json: async () => mockStoryResponse,
+    });
+
+    const { result } = renderHook(() =>
+      useSuggestionHelper({
+        artifactType: 'story',
+        llmPayload: mockStoryPayload,
+        setLmResponse: mockSetLmResponse,
+      })
+    );
+
+    act(() => {
+      result.current.getSuggestion();
+    });
+
+    expect(result.current.isSuggestionLoading).toBe(true);
+  });
+
+  it('sets suggestion "error" on status between 400 and 600', async () => {
+    fetch.mockResolvedValueOnce({
+      status: 404,
+      json: async () => ({}),
+    });
+
+    const { result } = renderHook(() =>
+      useSuggestionHelper({
+        artifactType: 'story',
+        llmPayload: mockStoryPayload,
+        setLmResponse: mockSetLmResponse,
+      })
+    );
+
+    await act(async () => {
+      await result.current.getSuggestion();
+    });
+
+    expect(mockSetLmResponse).toHaveBeenCalledWith(expect.any(Function));
+    expect(result.current.suggestionData.status).toBe(404);
+  });
 });
