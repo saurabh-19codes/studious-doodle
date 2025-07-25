@@ -294,3 +294,29 @@ it('parses feature-type suggestion response using x.data (line 70 coverage)', as
 
   expect(mockSetLmResponseFn).toHaveBeenCalled();
 });
+
+it('handles feature type response with body as array and maps x.data', async () => {
+  fetch.mockResolvedValueOnce({
+    status: 200,
+    json: async () => [
+      { data: [{ feature_id: 'F780672', suggestion: 'Feature 1' }] },
+      { data: [{ feature_id: 'F780999', suggestion: 'Feature 2' }] },
+    ],
+  });
+
+  const mockSetLmResponseFn = jest.fn();
+
+  const { result } = renderHook(() =>
+    useSuggestionHelper({
+      artifactType: 'feature',
+      llmPayload: mockFeaturePayload,
+      setLmResponse: mockSetLmResponseFn,
+    })
+  );
+
+  await act(async () => {
+    await result.current.getSuggestion();
+  });
+
+  expect(mockSetLmResponseFn).toHaveBeenCalled();
+});
