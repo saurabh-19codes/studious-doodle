@@ -1,0 +1,92 @@
+it('should mark score as error when API fails (line 97)', async () => {
+  fetch.mockResolvedValueOnce({
+    ok: false,
+    status: 500,
+    json: async () => ({}),
+  });
+
+  const prev = [
+    { user_story_id: 'US5348674', score: 'loading' },
+    { user_story_id: 'US9999999', score: 'loading' },
+  ];
+
+  const mockSetLmResponse = jest.fn();
+
+  const { result } = renderHook(() =>
+    useScoringApi({
+      artifactType: 'story',
+      llmPayload: [prev[0]],
+      setLmResponse: mockSetLmResponse,
+      eventDetails: {},
+    })
+  );
+
+  await act(async () => {
+    await result.current.getScoring();
+  });
+
+  // Use second call — triggered from useEffect after failed scoring
+  const callback = mockSetLmResponse.mock.calls[1][0];
+  const updated = callback(prev);
+
+  expect(updated).toEqual([
+    { user_story_id: 'US5348674', score: 'error' },
+    { user_story_id: 'US9999999', score: 'error' },
+  ]);
+});
+
+
+
+it('should merge story score with previous values (line 87)', async () => {
+  const scoringResponse = {
+    user_story_analysis: [
+      {
+        user_story_id: 'US5348674',
+        score: '4.0',
+        improvements: 'Some improvements',
+      },
+    ],
+  };
+
+  fetch.mockResolvedValueOnce({
+    ok: true,
+    status: 200,
+    json: async () => scoringResponse,
+  });
+
+  const prev = [
+    { user_story_id: 'US5348674', score: 'loading' },
+    { user_story_id: 'US9999999', score: 'loading' },
+  ];
+
+  const mockSetLmResponse = jest.fn();
+
+  const { result } = renderHook(() =>
+    useScoringApi({
+      artifactType: 'story',
+      llmPayload: [scoringResponse.user_story_analysis[0]],
+      setLmResponse: mockSetLmResponse,
+      eventDetails: {},
+    })
+  );
+
+  await act(async () => {
+    await result.current.getScoring();
+  });
+
+  // Manually trigger the useEffect merge with simulated `scoringData`
+  const callback = mockSetLmResponse.mock.calls[1][0]; // 2nd call = useEffect
+  const merged = callback(prev);
+
+  expect(merged).toEqual([
+    {
+      user_story_id: 'US5348674',
+      score: '4.0',
+      improvements: 'Some improvements',
+    },
+    {
+      user_story_id: 'US9999999',
+      score: 'loading',
+    },
+  ]);
+});
