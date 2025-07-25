@@ -199,3 +199,46 @@ describe('useSuggestionHelper', () => {
     expect(result.current.suggestionData.status).toBe(404);
   });
 });
+
+222222222222222222222222222222
+
+
+it('sets suggestions to loading for matching ids', async () => {
+  fetch.mockResolvedValueOnce({
+    status: 200,
+    json: async () => mockStoryResponse,
+  });
+
+  const initialLmData = [
+    {
+      user_story_id: 'US5348674',
+      suggestions: '',
+    },
+    {
+      user_story_id: 'UNRELATED_ID',
+      suggestions: '',
+    },
+  ];
+
+  const mockSetLmResponseFn = jest.fn((updateFn) => {
+    const result = updateFn(initialLmData);
+    expect(result).toEqual([
+      { user_story_id: 'US5348674', suggestions: 'loading' }, // updated
+      { user_story_id: 'UNRELATED_ID', suggestions: '' },     // untouched
+    ]);
+  });
+
+  const { result } = renderHook(() =>
+    useSuggestionHelper({
+      artifactType: 'story',
+      llmPayload: mockStoryPayload, // has US5348674
+      setLmResponse: mockSetLmResponseFn,
+    })
+  );
+
+  await act(async () => {
+    await result.current.getSuggestion();
+  });
+
+  expect(mockSetLmResponseFn).toHaveBeenCalled();
+});
