@@ -238,3 +238,163 @@ it('should set score as loading for matching feature_id or user_story_id', async
 
   expect(mockSetLmResponse).toHaveBeenCalled();
 });
+
+2222222223222222222222222
+
+it('should handle llmPayload as a single object (not array)', async () => {
+  const singlePayload = {
+    feature_id: 'F708672',
+    feature_name: 'RSS Migration',
+  };
+
+  fetch.mockResolvedValueOnce({
+    ok: true,
+    status: 200,
+    json: async () => mockFeatureResponse,
+  });
+
+  const mockSetLmResponse = jest.fn();
+
+  const { result } = renderHook(() =>
+    useScoringApi({
+      artifactType: 'feature',
+      llmPayload: singlePayload,
+      setLmResponse: mockSetLmResponse,
+      eventDetails: {},
+    })
+  );
+
+  await act(async () => {
+    await result.current.getScoring();
+  });
+
+  expect(fetch).toHaveBeenCalled();
+});
+
+it('should merge scored response in useEffect for feature', async () => {
+  fetch.mockResolvedValueOnce({
+    ok: true,
+    status: 200,
+    json: async () => mockFeatureResponse,
+  });
+
+  const prevResponse = [
+    { feature_id: 'F708672', score: 'loading' },
+    { feature_id: 'OTHER_ID', score: 'loading' },
+  ];
+
+  const mockSetLmResponse = jest.fn((callback) => {
+    const result = callback(prevResponse);
+
+    expect(result).toEqual([
+      {
+        feature_id: 'F708672',
+        score: '7.12',
+        improvements: 'Strategic Alignment',
+        scoring_criteria: 'Business Value: 2.67 of 3.00.',
+      },
+      {
+        feature_id: 'OTHER_ID',
+        score: 'loading',
+      },
+    ]);
+  });
+
+  const { result } = renderHook(() =>
+    useScoringApi({
+      artifactType: 'feature',
+      llmPayload: mockFeaturePayload,
+      setLmResponse: mockSetLmResponse,
+      eventDetails: {},
+    })
+  );
+
+  await act(async () => {
+    await result.current.getScoring();
+  });
+});
+
+it('should merge feature scoring data into previous LLM response (useEffect)', async () => {
+  fetch.mockResolvedValueOnce({
+    ok: true,
+    status: 200,
+    json: async () => mockFeatureResponse,
+  });
+
+  const prevResponse = [
+    { feature_id: 'F708672', score: 'loading' }, // matches
+    { feature_id: 'OTHER_ID', score: 'loading' }, // no match
+  ];
+
+  const mockSetLmResponse = jest.fn();
+
+  const { result } = renderHook(() =>
+    useScoringApi({
+      artifactType: 'feature',
+      llmPayload: mockFeaturePayload,
+      setLmResponse: mockSetLmResponse,
+      eventDetails: {},
+    })
+  );
+
+  await act(async () => {
+    await result.current.getScoring();
+  });
+
+  // Simulate useEffect triggering after scoringData gets set
+  act(() => {
+    // Simulate rerun of useEffect
+    const scoringData = {
+      status: 200,
+      body: mockFeatureResponse,
+    };
+
+    const mergedResult = mockSetLmResponse.mock.calls[0][0](prevResponse);
+
+    expect(mergedResult).toEqual([
+      {
+        feature_id: 'F708672',
+        score: '7.12',
+        improvements: 'Strategic Alignment',
+        scoring_criteria: 'Business Value: 2.67 of 3.00.',
+      },
+      { feature_id: 'OTHER_ID', score: 'loading' }, // untouched
+    ]);
+  });
+});
+
+it('should set all scores to "error" if API response fails (status >= 400)', async () => {
+  const prevResponse = [
+    { feature_id: 'F708672', score: 'loading' },
+    { feature_id: 'OTHER_ID', score: 'loading' },
+  ];
+
+  const mockSetLmResponse = jest.fn();
+
+  fetch.mockResolvedValueOnce({
+    ok: false,
+    status: 500,
+    json: async () => ({}),
+  });
+
+  const { result } = renderHook(() =>
+    useScoringApi({
+      artifactType: 'feature',
+      llmPayload: mockFeaturePayload,
+      setLmResponse: mockSetLmResponse,
+      eventDetails: {},
+    })
+  );
+
+  await act(async () => {
+    await result.current.getScoring();
+  });
+
+  // Simulate setLmResponse logic for failure
+  const errorResult = mockSetLmResponse.mock.calls[1][0](prevResponse); // 2nd call (after fetch)
+
+  expect(errorResult).toEqual([
+    { feature_id: 'F708672', score: 'error' },
+    { feature_id: 'OTHER_ID', score: 'error' },
+  ]);
+});
