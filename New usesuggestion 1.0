@@ -245,3 +245,37 @@ describe('useSuggestionHelper', () => {
     expect(mockSetLmResponse).not.toHaveBeenCalled(); // should not call for failed API
   });
 });
+
+it('should handle network or fetch errors and fallback to status 500', async () => {
+  mockFetch.mockRejectedValue(new Error('Network error'));
+
+  const payload = [{ user_story_id: 'US123' }];
+
+  const { result } = renderHook(() =>
+    useSuggestionHelper({
+      artifactType: 'story',
+      llmPayload: payload,
+      setLmResponse: mockSetLmResponse,
+    })
+  );
+
+  act(() => {
+    result.current.getSuggestion();
+  });
+
+  // ✅ Wait for useEffect to react to setSuggestionData({ status: 500 })
+  await waitFor(() => {
+    expect(mockSetLmResponse).toHaveBeenCalledTimes(2);
+  });
+
+  const setFn = mockSetLmResponse.mock.calls[1][0];
+  const updated = setFn(payload);
+
+  expect(updated).toEqual([
+    {
+      ...payload[0],
+      suggestions: 'error',
+    },
+  ]);
+});
+
