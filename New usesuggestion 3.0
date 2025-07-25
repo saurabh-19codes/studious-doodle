@@ -1,0 +1,50 @@
+test('adds suggestions to matching feature item', async () => {
+  const mockSetLmResponse = vi.fn();
+
+  const payload = {
+    artifactType: 'feature',
+    orgName: ['org1'],
+    featureId: 'F123',
+  };
+
+  const mockResponse = {
+    body: [
+      {
+        feature_id: 'F123',
+        data: { Suggested_Feature: 'Test feature suggestion' },
+      },
+    ],
+  };
+
+  global.fetch = vi.fn().mockResolvedValueOnce({
+    ok: true,
+    json: async () => mockResponse,
+  });
+
+  renderHook(() =>
+    useSuggestionApi({
+      lmPayload: payload,
+      setLmResponse: mockSetLmResponse,
+    })
+  );
+
+  await waitFor(() => expect(mockSetLmResponse).toHaveBeenCalledTimes(2));
+
+  // Second call = updater function
+  const updateFn = mockSetLmResponse.mock.calls[1][0];
+
+  const result = updateFn([
+    {
+      feature_id: 'F123',
+      feature_name: 'Test Feature',
+    },
+  ]);
+
+  expect(result).toEqual([
+    {
+      feature_id: 'F123',
+      feature_name: 'Test Feature',
+      suggestions: { Suggested_Feature: 'Test feature suggestion' },
+    },
+  ]);
+});
