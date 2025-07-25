@@ -1,0 +1,187 @@
+import { renderHook, act } from '@testing-library/react-hooks';
+import useScoringApi from '../useScoringApi'; // adjust path
+import { useSelector } from 'react-redux';
+import { useUserData, useActiveOrg } from '../../hooks/useAuthData';
+
+jest.mock('react-redux', () => ({
+  useSelector: jest.fn(),
+}));
+
+jest.mock('../../hooks/useAuthData', () => ({
+  useUserData: jest.fn(),
+  useActiveOrg: jest.fn(),
+}));
+
+global.fetch = jest.fn();
+
+const mockFeaturePayload = [
+  {
+    feature_id: 'F708672',
+    feature_name: 'RSS: Migrate UK Processing Bank from Barclays to Citi',
+    feature_description: 'As a product owner...',
+    feature_acceptance_criteria: 'In order for this feature to be marked as done...',
+    feature_objectId: '812879424619',
+    feature_reference: 'https://rally1.rallydev.com/...'
+  }
+];
+
+const mockStoryPayload = [
+  {
+    user_story_id: 'US5348674',
+    user_story_name: 'RSS: Migrate UK Processing Bank...',
+    user_story_description: 'As a PO I would like team to complete...',
+    user_story_acceptance_criteria: 'In order for this story to be accepted...',
+    user_story_objectId: '812879429659',
+    user_story_reference: 'https://rally1.rallydev.com/...'
+  }
+];
+
+const mockFeatureResponse = {
+  Feature_Analysis: [
+    {
+      feature_id: 'F708672',
+      score: '7.12',
+      improvements: 'Strategic Alignment',
+      scoring_criteria: 'Business Value: 2.67 of 3.00.',
+    },
+  ]
+};
+
+const mockStoryResponse = {
+  user_story_analysis: [
+    {
+      user_story_id: 'US5348674',
+      score: '4.0',
+      improvements: 'Gaps Identified',
+      scoring_criteria: 'Independent: 0.00 of 2.00',
+    }
+  ]
+};
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  useSelector.mockImplementation((cb) =>
+    cb({
+      getIn: (keys) => {
+        if (keys.includes('qeAssistUrl')) return 'https://qeassist-dev.aexp.com';
+        if (keys.includes('ELFEndpoints')) return 'https://elfendpoint';
+      },
+    })
+  );
+  useUserData.mockReturnValue({ userId: 'test-user' });
+  useActiveOrg.mockReturnValue({ code: 'ORG1' });
+});
+
+describe('useScoringApi Hook', () => {
+  it('should handle successful feature scoring', async () => {
+    fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockFeatureResponse,
+      status: 200,
+    });
+
+    const mockSetLmResponse = jest.fn();
+
+    const { result, waitForNextUpdate } = renderHook(() =>
+      useScoringApi({
+        artifactType: 'feature',
+        llmPayload: mockFeaturePayload,
+        setLmResponse: mockSetLmResponse,
+        eventDetails: { event: 'Feature Analysis' }
+      })
+    );
+
+    await act(async () => {
+      await result.current.getScoring();
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/api/analyze/feature'),
+      expect.objectContaining({
+        method: 'POST',
+      })
+    );
+
+    expect(result.current.scoringData.status).toBe(200);
+    expect(mockSetLmResponse).toHaveBeenCalledWith(expect.any(Function));
+  });
+
+  it('should handle successful story scoring', async () => {
+    fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockStoryResponse,
+      status: 200,
+    });
+
+    const mockSetLmResponse = jest.fn();
+
+    const { result } = renderHook(() =>
+      useScoringApi({
+        artifactType: 'story',
+        llmPayload: mockStoryPayload,
+        setLmResponse: mockSetLmResponse,
+        eventDetails: { event: 'Story Analysis' }
+      })
+    );
+
+    await act(async () => {
+      await result.current.getScoring();
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/api/analyze/story'),
+      expect.objectContaining({
+        method: 'POST',
+      })
+    );
+
+    expect(result.current.scoringData.status).toBe(200);
+    expect(mockSetLmResponse).toHaveBeenCalledWith(expect.any(Function));
+  });
+
+  it('should handle API failure with status >= 400', async () => {
+    fetch.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      json: async () => ({}),
+    });
+
+    const mockSetLmResponse = jest.fn();
+
+    const { result } = renderHook(() =>
+      useScoringApi({
+        artifactType: 'feature',
+        llmPayload: mockFeaturePayload,
+        setLmResponse: mockSetLmResponse,
+        eventDetails: { event: 'Fail Case' }
+      })
+    );
+
+    await act(async () => {
+      await result.current.getScoring();
+    });
+
+    expect(result.current.scoringData.status).toBe(500);
+    expect(mockSetLmResponse).toHaveBeenCalledWith(expect.any(Function));
+  });
+
+  it('should mark score as "loading" before API response', async () => {
+    const mockSetLmResponse = jest.fn();
+
+    const { result } = renderHook(() =>
+      useScoringApi({
+        artifactType: 'feature',
+        llmPayload: mockFeaturePayload,
+        setLmResponse: mockSetLmResponse,
+        eventDetails: {},
+      })
+    );
+
+    await act(async () => {
+      result.current.getScoring();
+    });
+
+    // Initially, `score: loading` will be set
+    expect(mockSetLmResponse).toHaveBeenCalledWith(expect.any(Function));
+  });
+});
