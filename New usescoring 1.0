@@ -185,3 +185,56 @@ describe('useScoringApi Hook', () => {
     expect(mockSetLmResponse).toHaveBeenCalledWith(expect.any(Function));
   });
 });
+
+
+yyyyyyyyyyyyyyyyyyyyyyyy
+
+it('should set score as loading for matching feature_id or user_story_id', async () => {
+  fetch.mockResolvedValueOnce({
+    ok: true,
+    status: 200,
+    json: async () => mockFeatureResponse,
+  });
+
+  const prevResponse = [
+    {
+      feature_id: 'F708672',
+      score: 'previous-score',
+    },
+    {
+      feature_id: 'OTHER_ID',
+      score: 'previous-score',
+    },
+  ];
+
+  const mockSetLmResponse = jest.fn((callback) => {
+    const updated = callback(prevResponse);
+
+    // Assert that it sets "loading" for matched feature_id
+    expect(updated).toEqual([
+      {
+        feature_id: 'F708672',
+        score: 'loading',
+      },
+      {
+        feature_id: 'OTHER_ID',
+        score: 'previous-score', // untouched
+      },
+    ]);
+  });
+
+  const { result } = renderHook(() =>
+    useScoringApi({
+      artifactType: 'feature',
+      llmPayload: mockFeaturePayload,
+      setLmResponse: mockSetLmResponse,
+      eventDetails: {},
+    })
+  );
+
+  await act(async () => {
+    await result.current.getScoring();
+  });
+
+  expect(mockSetLmResponse).toHaveBeenCalled();
+});
