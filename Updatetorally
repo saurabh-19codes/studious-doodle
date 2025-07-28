@@ -1,0 +1,47 @@
+const [show, setShow] = useState(false); // Already present
+const [confirmActionType, setConfirmActionType] = useState(null); // new: "close" or "update"
+
+{show && (
+  <Modal>
+    <ModalBody id="modal-body">
+      <div className="pad-1">
+        <div className="margin-l-b pad-l-1">
+          {confirmActionType === 'update'
+            ? 'Are you sure you want to update the Rally details?'
+            : 'Your changes have not been saved to Rally, are you sure you want to close this window?'}
+        </div>
+      </div>
+    </ModalBody>
+    <ModalFooter>
+      <ButtonSecondary className="margin-l-r" onClick={() => {
+        if (confirmActionType === 'update') {
+          setUserAction('update');
+          acceptStory();
+        } else {
+          onClose();
+        }
+        setShow(false); // Close modal after confirming
+        setConfirmActionType(null);
+      }}>
+        Yes
+      </ButtonSecondary>
+      <ButtonPrimary className="margin-l-l" onClick={() => {
+        setShow(false);
+        setConfirmActionType(null);
+      }}>
+        No
+      </ButtonPrimary>
+    </ModalFooter>
+  </Modal>
+)}
+// For Close Button
+onClick={() => {
+  setConfirmActionType('close');
+  setShow(true);
+}}
+
+// For Update Rally Button
+onClick={() => {
+  setConfirmActionType('update');
+  setShow(true);
+}}
