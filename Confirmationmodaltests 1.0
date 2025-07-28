@@ -102,4 +102,72 @@ describe('StoryDetailsPopup - Confirmation Modal Flow', () => {
     expect(mockOnCloseModal).not.toHaveBeenCalled();
   });
 });
+22222222222222222222222222222222222223333222223333.
 
+
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import StoryDetailsPopup from '../StoryDetailsPopup';
+import { useFetchye } from '@axp/hooks';
+
+jest.mock('@axp/hooks'); // mock the module
+
+describe('StoryDetailsPopup - Confirmation Modal Actions', () => {
+  const mockAcceptStory = jest.fn();
+  const mockOnCloseModal = jest.fn();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+
+    // Return mocked acceptStory from useFetchye
+    useFetchye.mockImplementation(() => ({
+      run: mockAcceptStory,
+      data: {},
+      isLoading: false,
+    }));
+  });
+
+  const defaultProps = {
+    /* Provide valid props from your component */
+    storyInfo: {
+      id: 123,
+      description: 'test desc',
+      acceptanceCriteria: 'test criteria',
+    },
+    onCloseModal: mockOnCloseModal,
+    setUserAction: jest.fn(),
+    // ...any other required props
+  };
+
+  it('opens update confirmation modal and confirms -> calls acceptStory', async () => {
+    render(<StoryDetailsPopup {...defaultProps} />);
+
+    fireEvent.click(screen.getByText('Update Rally'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Confirm Rally Update')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Yes'));
+
+    await waitFor(() => {
+      expect(mockAcceptStory).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('opens close confirmation modal and confirms -> calls onCloseModal', async () => {
+    render(<StoryDetailsPopup {...defaultProps} />);
+
+    const closeButton = screen.getByLabelText('Close');
+    fireEvent.click(closeButton);
+
+    await waitFor(() => {
+      expect(screen.getByText('Unsaved Changes')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Yes'));
+
+    await waitFor(() => {
+      expect(mockOnCloseModal).toHaveBeenCalledTimes(1);
+    });
+  });
+});
