@@ -38,3 +38,68 @@ describe('ConfirmActionModal', () => {
 });
 
 
+import { render, screen, fireEvent } from '@testing-library/react';
+import StoryDetailsPopup from '../StoryDetailsPopup';
+
+// Mock props and functions
+const mockAcceptStory = jest.fn();
+const mockOnCloseModal = jest.fn();
+
+const defaultProps = {
+  /* other required props here */
+  acceptStory: mockAcceptStory,
+  onCloseModal: mockOnCloseModal,
+};
+
+describe('StoryDetailsPopup - Confirmation Modal Flow', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('shows confirmation modal when Update Rally is clicked', () => {
+    render(<StoryDetailsPopup {...defaultProps} />);
+    fireEvent.click(screen.getByText('Update Rally'));
+    expect(screen.getByText('Confirm Rally Update')).toBeInTheDocument();
+    expect(screen.getByText('Are you sure you want to update the Rally details with the latest changes?')).toBeInTheDocument();
+  });
+
+  it('confirms Update Rally and calls acceptStory', () => {
+    render(<StoryDetailsPopup {...defaultProps} />);
+    fireEvent.click(screen.getByText('Update Rally'));
+    fireEvent.click(screen.getByText('Yes'));
+    expect(mockAcceptStory).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancels Update Rally confirmation', () => {
+    render(<StoryDetailsPopup {...defaultProps} />);
+    fireEvent.click(screen.getByText('Update Rally'));
+    fireEvent.click(screen.getByText('No'));
+    expect(screen.queryByText('Confirm Rally Update')).not.toBeInTheDocument();
+    expect(mockAcceptStory).not.toHaveBeenCalled();
+  });
+
+  it('shows confirmation modal when close is triggered', () => {
+    render(<StoryDetailsPopup {...defaultProps} />);
+    const modalCloseButton = screen.getByLabelText('Close'); // or data-testid if used
+    fireEvent.click(modalCloseButton);
+    expect(screen.getByText('Unsaved Changes')).toBeInTheDocument();
+    expect(screen.getByText('Your changes have not been saved to Rally. Are you sure you want to close this window?')).toBeInTheDocument();
+  });
+
+  it('confirms close and calls onCloseModal', () => {
+    render(<StoryDetailsPopup {...defaultProps} />);
+    const modalCloseButton = screen.getByLabelText('Close');
+    fireEvent.click(modalCloseButton);
+    fireEvent.click(screen.getByText('Yes'));
+    expect(mockOnCloseModal).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancels close confirmation', () => {
+    render(<StoryDetailsPopup {...defaultProps} />);
+    const modalCloseButton = screen.getByLabelText('Close');
+    fireEvent.click(modalCloseButton);
+    fireEvent.click(screen.getByText('No'));
+    expect(mockOnCloseModal).not.toHaveBeenCalled();
+  });
+});
+
