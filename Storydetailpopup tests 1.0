@@ -43,3 +43,26 @@ it('shows error toast when unauthorizeMessage is true and handles close', () => 
   expect(mockSetUnauthorizeMessage).toHaveBeenCalledWith(false);
   expect(mockSetUpdateMessageClose).not.toHaveBeenCalled();
 });
+import { render, screen, fireEvent } from '@testing-library/react';
+import StoryDetailsPopup from '../StoryDetailsPopup';
+import '@testing-library/jest-dom';
+
+jest.useFakeTimers();
+
+it('should auto-close update toast after 3 seconds', () => {
+  render(<StoryDetailsPopup {...defaultProps} />);
+
+  // Simulate whatever action causes updateMessageClose to become true
+  // e.g., clicking Update button
+  const updateBtn = screen.getByText(/update rally/i);
+  fireEvent.click(updateBtn);
+
+  // Confirm toast appears
+  expect(screen.getByText(/update successful/i)).toBeInTheDocument();
+
+  // Fast-forward 3 seconds
+  jest.advanceTimersByTime(3000);
+
+  // Confirm toast is removed
+  expect(screen.queryByText(/update successful/i)).not.toBeInTheDocument();
+});
