@@ -12,6 +12,45 @@ it('shows success toast when updateMessageClose is true and handles close', () =
     />
   );
 
+import { render, screen, fireEvent } from '@testing-library/react';
+import StoryDetailsPopup from '../StoryDetailsPopup';
+import React from 'react';
+
+beforeEach(() => {
+  global.URL.createObjectURL = jest.fn(() => 'blob:http://localhost/fake-url');
+});
+
+afterEach(() => {
+  jest.clearAllMocks();
+});
+
+it('should execute generateBlobURL when anchor link is clicked (artifactType: feature)', () => {
+  render(
+    <StoryDetailsPopup
+      artifactType="feature"
+      story={{
+        title: 'SomeFeatureTitle',
+        acceptanceCriteria: '',
+        description: '',
+      }}
+    />
+  );
+
+  // Simulate improvement text containing a known keyword like "Risks"
+  const improvementText = 'Risks: There are some risks involved.';
+
+  // Manually call formatImprovement and render it (since it's not directly invoked in your component render)
+  const { container } = render(<div>{StoryDetailsPopup.prototype.formatImprovement(improvementText)}</div>);
+
+  const anchor = screen.getByTestId('improvement-link');
+  expect(anchor).toBeInTheDocument();
+
+  fireEvent.click(anchor);
+
+  expect(URL.createObjectURL).toHaveBeenCalled();
+});
+
+
   expect(screen.getByText('Feature Updated successfully!')).toBeInTheDocument();
 
   // Trigger toast close
