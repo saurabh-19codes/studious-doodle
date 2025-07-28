@@ -1,0 +1,40 @@
+import React from 'react';
+import { render, screen, fireEvent } from '@testing-library/react';
+import ConfirmActionModal from './ConfirmActionModal';
+
+describe('ConfirmActionModal', () => {
+  const defaultProps = {
+    show: true,
+    title: 'Test Title',
+    message: 'Test message?',
+    onConfirm: jest.fn(),
+    onCancel: jest.fn(),
+  };
+
+  it('renders correctly when show is true', () => {
+    render(<ConfirmActionModal {...defaultProps} />);
+    expect(screen.getByText('Test Title')).toBeInTheDocument();
+    expect(screen.getByText('Test message?')).toBeInTheDocument();
+    expect(screen.getByText('Yes')).toBeInTheDocument();
+    expect(screen.getByText('No')).toBeInTheDocument();
+  });
+
+  it('does not render when show is false', () => {
+    render(<ConfirmActionModal {...defaultProps} show={false} />);
+    expect(screen.queryByText('Test Title')).not.toBeInTheDocument();
+  });
+
+  it('calls onConfirm when Yes is clicked', () => {
+    render(<ConfirmActionModal {...defaultProps} />);
+    fireEvent.click(screen.getByText('Yes'));
+    expect(defaultProps.onConfirm).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls onCancel when No is clicked', () => {
+    render(<ConfirmActionModal {...defaultProps} />);
+    fireEvent.click(screen.getByText('No'));
+    expect(defaultProps.onCancel).toHaveBeenCalledTimes(1);
+  });
+});
+
+
