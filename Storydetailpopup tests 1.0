@@ -1,0 +1,45 @@
+it('shows success toast when updateMessageClose is true and handles close', () => {
+  const mockSetUpdateMessageClose = jest.fn();
+  const mockSetUnauthorizeMessage = jest.fn();
+
+  render(
+    <StoryDetailsPopup
+      {...baseProps}
+      updateMessageClose={true}
+      unauthorizeMessage={false}
+      setUpdateMessageClose={mockSetUpdateMessageClose}
+      setUnauthorizeMessage={mockSetUnauthorizeMessage}
+    />
+  );
+
+  expect(screen.getByText('Feature Updated successfully!')).toBeInTheDocument();
+
+  // Trigger toast close
+  fireEvent.click(screen.getByTestId('toast-close-button'));
+
+  expect(mockSetUpdateMessageClose).toHaveBeenCalledWith(false);
+  expect(mockSetUnauthorizeMessage).not.toHaveBeenCalled();
+});
+
+it('shows error toast when unauthorizeMessage is true and handles close', () => {
+  const mockSetUpdateMessageClose = jest.fn();
+  const mockSetUnauthorizeMessage = jest.fn();
+
+  render(
+    <StoryDetailsPopup
+      {...baseProps}
+      updateMessageClose={false}
+      unauthorizeMessage={true}
+      setUpdateMessageClose={mockSetUpdateMessageClose}
+      setUnauthorizeMessage={mockSetUnauthorizeMessage}
+    />
+  );
+
+  expect(screen.getByText('Access Denied!')).toBeInTheDocument();
+
+  // Trigger toast close
+  fireEvent.click(screen.getByTestId('toast-close-button'));
+
+  expect(mockSetUnauthorizeMessage).toHaveBeenCalledWith(false);
+  expect(mockSetUpdateMessageClose).not.toHaveBeenCalled();
+});
