@@ -1,0 +1,34 @@
+const DocsTable = () => {
+  const handleDelete = () => {};
+  const handleDownload = () => {};
+
+  const tableData = [
+    {
+      documentId: '1',
+      documentName: 'DesignDoc.pdf',
+      documentType: 'PDF',
+      uploadedBy: 'Alice',
+      uploadedTimeStamp: '2025-07-29 10:00 AM',
+    },
+    {
+      documentId: '2',
+      documentName: 'ProjectPlan.xlsx',
+      documentType: 'Excel',
+      uploadedBy: 'Bob',
+      uploadedTimeStamp: '2025-07-28 02:30 PM',
+    },
+    {
+      documentId: '3',
+      documentName: 'Requirements.docx',
+      documentType: 'Word',
+      uploadedBy: 'Charlie',
+      uploadedTimeStamp: '2025-07-27 09:15 AM',
+    },
+  ];
+
+  return (
+    <div>
+      {/* your existing table JSX here */}
+    </div>
+  );
+};
