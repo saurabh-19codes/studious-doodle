@@ -1,0 +1,217 @@
+import React, { useState } from 'react';
+import { Upload } from 'lucide-react';
+
+const UploadFilesSection = () => {
+  const [selectedAction, setSelectedAction] = useState('');
+  const [files, setFiles] = useState([]);
+  
+  const uploadOptions = [
+    { value: 'uploadDocs', label: 'Upload Documents' },
+    { value: 'addLinks', label: 'Add Links' },
+    { value: 'other', label: 'Other Actions' }
+  ];
+
+  const handleFileUpload = (event) => {
+    const uploadedFiles = Array.from(event.target.files);
+    setFiles(uploadedFiles);
+  };
+
+  const mockData = [
+    { id: 1, name: 'Document 1.pdf', size: '2.5 MB' },
+    { id: 2, name: 'Document 2.docx', size: '1.8 MB' },
+    { id: 3, name: 'Spreadsheet.xlsx', size: '3.2 MB' }
+  ];
+
+  return (
+    <div className="flex flex-col space-y-6 p-6">
+      {/* Main container with side-by-side layout */}
+      <div className="flex flex-col lg:flex-row gap-6">
+        {/* Left side - Select and Actions */}
+        <div className="flex-1 space-y-4">
+          {/* Select dropdown */}
+          <div className="w-full">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Select Action
+            </label>
+            <select
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+              value={selectedAction}
+              onChange={(opt) => setSelectedAction(opt.target.value)}
+              placeholder="Choose an action"
+            >
+              <option value="">Choose an action</option>
+              {uploadOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Conditional action sections */}
+          {selectedAction === 'uploadDocs' && (
+            <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+              <label 
+                htmlFor="file-upload" 
+                className="block text-sm font-medium text-gray-700 mb-3"
+              >
+                Upload Document (File types accepted: pdf, docx, pptx, xlsx)
+              </label>
+              <div className="relative">
+                <input
+                  id="file-upload"
+                  type="file"
+                  multiple
+                  accept=".pdf,.docx,.pptx,.xlsx"
+                  onChange={handleFileUpload}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                />
+                <div className="flex items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg hover:border-gray-400 transition-colors bg-white">
+                  <div className="text-center">
+                    <Upload className="mx-auto h-8 w-8 text-gray-400 mb-2" />
+                    <p className="text-sm text-gray-600">
+                      Click to upload or drag and drop
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Max 10 files
+                    </p>
+                  </div>
+                </div>
+              </div>
+              {files.length > 0 && (
+                <div className="mt-3">
+                  <p className="text-sm text-gray-600 mb-2">Selected files:</p>
+                  <ul className="space-y-1">
+                    {files.map((file, index) => (
+                      <li key={index} className="text-sm text-gray-800 bg-white px-2 py-1 rounded">
+                        {file.name} ({(file.size / 1024 / 1024).toFixed(2)} MB)
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
+          {selectedAction === 'addLinks' && (
+            <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+              <p className="text-sm text-gray-600">Add Links Here</p>
+              <textarea 
+                className="w-full mt-2 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                rows="4"
+                placeholder="Enter URLs here..."
+              />
+            </div>
+          )}
+
+          {selectedAction === 'other' && (
+            <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+              <p className="text-sm text-gray-600">Some other things go here</p>
+              <div className="mt-3 p-3 bg-white rounded border">
+                <p className="text-sm">Configure additional options here...</p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Right side - Selected Action Display (Fixed size) */}
+        <div className="w-full lg:w-80 xl:w-96">
+          <div className="h-80 border border-gray-200 rounded-lg bg-white shadow-sm overflow-hidden">
+            <div className="h-full flex flex-col">
+              <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
+                <h3 className="text-sm font-medium text-gray-900">
+                  Current Selection
+                </h3>
+              </div>
+              <div className="flex-1 p-4 overflow-y-auto">
+                {selectedAction ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                      <span className="text-sm font-medium text-gray-700">
+                        Action: {uploadOptions.find(opt => opt.value === selectedAction)?.label}
+                      </span>
+                    </div>
+                    
+                    {selectedAction === 'uploadDocs' && files.length > 0 && (
+                      <div>
+                        <p className="text-sm text-gray-600 mb-2">Files ({files.length}):</p>
+                        <div className="space-y-1">
+                          {files.slice(0, 5).map((file, index) => (
+                            <div key={index} className="text-xs text-gray-700 bg-gray-100 px-2 py-1 rounded truncate">
+                              {file.name}
+                            </div>
+                          ))}
+                          {files.length > 5 && (
+                            <div className="text-xs text-gray-500">
+                              +{files.length - 5} more files
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    
+                    <div className="pt-2 border-t border-gray-100">
+                      <p className="text-xs text-gray-500">
+                        Status: Ready to proceed
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-full text-gray-400">
+                    <div className="text-center">
+                      <div className="w-12 h-12 mx-auto mb-3 bg-gray-100 rounded-full flex items-center justify-center">
+                        <Upload className="w-6 h-6" />
+                      </div>
+                      <p className="text-sm">No action selected</p>
+                      <p className="text-xs mt-1">Choose an action to get started</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Documents Table */}
+      <div className="bg-white rounded-lg border border-gray-200">
+        <div className="px-4 py-3 border-b border-gray-200">
+          <h3 className="text-lg font-medium text-gray-900">Uploaded Documents</h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Name
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Size
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Status
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {mockData.map((item) => (
+                <tr key={item.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-3 text-sm text-gray-900">{item.name}</td>
+                  <td className="px-4 py-3 text-sm text-gray-500">{item.size}</td>
+                  <td className="px-4 py-3">
+                    <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+                      Uploaded
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default UploadFilesSection;
