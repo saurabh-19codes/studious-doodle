@@ -1,0 +1,235 @@
+import React, { useState, useContext, useCallback } from 'react';
+import EnhancedFeatureContext from '../context/EnhancedFeatureContext';
+import CreateUploadFile from './CreateUploadFile';
+import DocsTable from './DocsTable';
+
+// File structure:
+// {
+//   id: string,
+//   name: string,
+//   type: string,
+//   size: number,
+//   progress: number,
+//   status: 'uploading' | 'success' | 'error',
+//   error?: string
+// }
+
+const EnhanceStep0 = () => {
+  const { setCurrentStep } = useContext(EnhancedFeatureContext);
+
+  const [files, setFiles] = useState([]);
+
+  // -------- Upload Logic (Mock API) --------
+  const uploadFile = useCallback(async (file) => {
+    const newFile = {
+      id: `${Date.now()}-${file.name}`,
+      name: file.name,
+      type: file.name.split('.').pop(),
+      size: file.size,
+      progress: 0,
+      status: 'uploading',
+    };
+
+    setFiles((prev) => [...prev, newFile]);
+
+    // Simulate upload progress
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    setFiles((prev) =>
+      prev.map((f) => (f.id === newFile.id ? { ...f, progress: 50 } : f))
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    const isSuccess = Math.random() > 0.1; // 90% success rate
+
+    setFiles((prev) =>
+      prev.map((f) =>
+        f.id === newFile.id
+          ? {
+              ...f,
+              progress: 100,
+              status: isSuccess ? 'success' : 'error',
+              error: isSuccess ? undefined : 'Failed to upload. Try again.',
+            }
+          : f
+      )
+    );
+  }, []);
+
+  // -------- Delete File --------
+  const deleteFile = useCallback((id) => {
+    setFiles((prev) => prev.filter((file) => file.id !== id));
+  }, []);
+
+  // -------- Download File --------
+  const downloadFile = useCallback((file) => {
+    const blob = new Blob(['Mock file content'], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = file.name;
+    link.click();
+    URL.revokeObjectURL(url);
+  }, []);
+
+  const handleNext = () => {
+    setCurrentStep((prev) => prev + 1);
+  };
+
+  return (
+    <div className="margin-2-tb" id="qea-filter-container">
+      <FilterPersistent />
+
+      <div className="margin-1-b margin-3-t">
+        <Label htmlFor="lt-3" className="label-3">
+          Upload Document (File types: pdf, docx, pptx, xlsx)
+        </Label>
+
+        <div style={{ width: '55%' }}>
+          <CreateUploadFile
+            onFileUpload={uploadFile}
+            maxUpload={10}
+            disabled={files.length >= 10}
+          />
+        </div>
+      </div>
+
+      <DocsTable
+        files={files}
+        onDelete={deleteFile}
+        onDownload={downloadFile}
+      />
+
+      <div className="flex flex-justify-end margin-2-t margin-3-r">
+        <ButtonPrimary className="margin-1" onClick={handleNext}>
+          Next
+        </ButtonPrimary>
+      </div>
+    </div>
+  );
+};
+
+export default EnhanceStep0;
+
+import React, { useState } from 'react';
+import PropTypes from 'prop-types';
+import { Card, FileInput, File, Alert } from '@americanexpress/dls-react';
+
+const CreateUploadFile = ({ onFileUpload, maxUpload, disabled }) => {
+  const [currentFile, setCurrentFile] = useState(null);
+  const [error, setError] = useState('');
+
+  const handleFileSelect = async (file) => {
+    if (!file) return;
+    setError('');
+
+    // Check max upload limit
+    if (disabled) {
+      setError(`You can upload up to ${maxUpload} files only.`);
+      return;
+    }
+
+    // Mock upload UI
+    setCurrentFile({
+      documentName: file.name,
+      isLoading: true,
+      progress: 0,
+      size: file.size,
+    });
+
+    // Pass file to parent for actual upload
+    await onFileUpload(file);
+
+    setCurrentFile(null);
+  };
+
+  return (
+    <Card className="text-align-center">
+      {currentFile && (
+        <File
+          name={currentFile.documentName}
+          isLoading={currentFile.isLoading}
+          progress={currentFile.progress}
+          size={currentFile.size}
+          onCancel={() => setCurrentFile(null)}
+          onDelete={() => setCurrentFile(null)}
+          className="flex flex-align-items-center"
+        />
+      )}
+
+      {!currentFile && (
+        <FileInput onUpload={handleFileSelect} showConfirmation={false}>
+          <div className="flex flex-column height-full flex-align-items-center flex-justify-center">
+            <small>PDF, DOCX, PPTX, XLSX — Max size 5MB</small>
+          </div>
+        </FileInput>
+      )}
+
+      {error && <Alert id="input-3-alert">{error}</Alert>}
+    </Card>
+  );
+};
+
+CreateUploadFile.propTypes = {
+  onFileUpload: PropTypes.func.isRequired,
+  maxUpload: PropTypes.number.isRequired,
+  disabled: PropTypes.bool,
+};
+
+CreateUploadFile.defaultProps = {
+  disabled: false,
+};
+
+export default CreateUploadFile;
+import React from 'react';
+import PropTypes from 'prop-types';
+
+const DocsTable = ({ files, onDelete, onDownload }) => {
+  if (!files.length) return <p>No files uploaded.</p>;
+
+  return (
+    <table className="table">
+      <thead>
+        <tr>
+          <th>Document Name</th>
+          <th>Type</th>
+          <th>Size (KB)</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {files.map((file) => (
+          <tr key={file.id}>
+            <td>{file.name}</td>
+            <td>{file.type}</td>
+            <td>{(file.size / 1024).toFixed(2)}</td>
+            <td>{file.status}</td>
+            <td>
+              <button onClick={() => onDownload(file)}>Download</button>
+              <button onClick={() => onDelete(file.id)}>Delete</button>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+};
+
+DocsTable.propTypes = {
+  files: PropTypes.arrayOf(
+    PropTypes.shape({
+      id: PropTypes.string.isRequired,
+      name: PropTypes.string.isRequired,
+      type: PropTypes.string.isRequired,
+      size: PropTypes.number.isRequired,
+      progress: PropTypes.number.isRequired,
+      status: PropTypes.string.isRequired,
+      error: PropTypes.string,
+    })
+  ).isRequired,
+  onDelete: PropTypes.func.isRequired,
+  onDownload: PropTypes.func.isRequired,
+};
+
+export default DocsTable;
+
